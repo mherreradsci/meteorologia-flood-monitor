@@ -39,6 +39,11 @@ python flood_monitor.py --aoi mi_zona.geojson
 python flood_monitor.py --aoi mi_zona.geojson --days 15 --threshold -18
 ```
 
+`aoi/` (raíz del repo) guarda GeoJSON de referencia reutilizables como ejemplo
+y para pruebas — nombrados `<País>-<Región>-<Comuna>-<Localidad>.geojson`
+(ej. `aoi/Chile-Region_de_Coquimbo-La_huiguera-Chungungo.geojson`). Al
+correr desde `src/`, referenciarlos con `--aoi ../aoi/<archivo>.geojson`.
+
 There is no test suite, linter, or build step in this repo — verification is
 by inspecting the generated outputs (quicklook PNG against known terrain,
 GeoJSON in QGIS/geojson.io) or comparing against Copernicus Global Flood
@@ -91,6 +96,30 @@ driven by `main()`:
 tagged `<region>_<place>_<image-date>_<random-hex>_<local-timestamp>` (or
 `bbox_<coords>_...` when not using `--place`), so repeated runs — even
 reprocessing the same Sentinel-1 scene — never overwrite prior outputs.
+
+## Utilidades auxiliares
+
+`src/list_s1_items.py` es un script hermano, de solo lectura, que lista los
+N items Sentinel-1 RTC más recientes que intersectan un AOI, buscando hacia
+atrás desde una fecha de fin (`--end-date`, default "ahora"). Reutiliza
+`load_aoi`/`geocode_place`/`stac_catalog`/`DEFAULT_REGION` de
+`flood_monitor.py` vía import directo (mismo directorio, sin paquete), y
+comparte la misma convención de AOI (`--aoi`/`--bbox`/`--place`).
+
+A diferencia de `search_latest_s1` (que ensancha una ventana fija de días y
+ordena del lado del cliente), usa la STAC API **Sort extension**
+(`sortby`) + `max_items` de Planetary Computer con un intervalo de fecha
+abierto (`../{end_date}`), confirmado en vivo que pagina correctamente más
+allá del tamaño de página por defecto de `pystac-client` (10). Esto evita
+tener que adivinar cuántos días hacia atrás mirar.
+
+```bash
+cd src
+python list_s1_items.py --place Tongoy
+python list_s1_items.py --place Ovalle --end-date 2025-01-15 -n 5
+python list_s1_items.py --bbox -71.3 -29.95 -71.1 -29.8 --days-back 60
+python list_s1_items.py --aoi ../aoi/Chile-Region_de_Coquimbo-La_huiguera-Chungungo.geojson
+```
 
 ## Notes on calibration (from README)
 

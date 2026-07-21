@@ -28,8 +28,11 @@ python flood_monitor.py --place "La Serena" --change
 # Con bounding box (xmin ymin xmax ymax, lon/lat):
 python flood_monitor.py --bbox -58.65 -34.75 -58.30 -34.45
 
-# Con un GeoJSON de tu AOI (dibujalo en https://geojson.io):
+# Con un GeoJSON de tu AOI (dibujalo en https://geojson.io). La carpeta
+# aoi/ tiene ejemplos de referencia con nombre <País>-<Región>-<Comuna>-
+# <Localidad>.geojson (correlo desde src/, por eso el ../):
 python flood_monitor.py --aoi mi_zona.geojson
+python flood_monitor.py --aoi ../aoi/Chile-Region_de_Coquimbo-La_huiguera-Chungungo.geojson
 
 # Opciones útiles:
 python flood_monitor.py --aoi mi_zona.geojson --days 15 --threshold -18
