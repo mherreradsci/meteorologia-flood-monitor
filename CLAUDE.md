@@ -64,6 +64,14 @@ importan `flood_monitor` / `list_s1_items` por nombre igual que entre sí, y
 
 - `test_end_date.py`, `test_run_tag.py` — funciones puras (parseo de fechas,
   slug/tag de salida, conversión a dB).
+- `test_detection.py` — el núcleo de la decisión: `water_threshold` (umbral
+  fijo vs Otsu y su recorte a [-25, -14]) y `detect_flood` (umbral, nodata,
+  el borde exacto de `--min-area-px`, las dos máscaras y el criterio de
+  `--change`). Usa el doble `FakeRaster` de `helpers.py`, que solo expone
+  `.values`: es todo lo que esas dos funciones leen, así que no hace falta
+  xarray ni GDAL. Los mutantes de estas dos funciones (correr el `- 1` de
+  `max_size`, aflojar `<` a `<=`, sacar el `clip` o la guarda `isfinite`)
+  hacen fallar la suite; conviene que siga siendo así.
 - `test_search_window.py` — mockea `stac_catalog` (fixture `fake_stac` en
   `conftest.py`) para fijar el rango de fechas exacto que se le pide a la API
   y cómo se elige entre lo que devuelve, sin red.

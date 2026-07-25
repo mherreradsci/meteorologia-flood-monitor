@@ -4,6 +4,19 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import numpy as np
+
+
+class FakeRaster:
+    """Sustituto mínimo de un DataArray de rioxarray.
+
+    `detect_flood` y `water_threshold` solo leen `.values`, así que no hace
+    falta xarray (ni GDAL) para ejercitarlos.
+    """
+
+    def __init__(self, values):
+        self.values = np.asarray(values, dtype="float32")
+
 
 def utc(y: int, m: int, d: int, hh: int = 0, mm: int = 0,
         ss: int = 0) -> datetime:
