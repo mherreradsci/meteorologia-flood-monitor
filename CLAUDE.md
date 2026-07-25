@@ -76,6 +76,20 @@ importan `flood_monitor` / `list_s1_items` por nombre igual que entre sí, y
 Los tests de red usan un bbox literal de Tongoy (`TONGOY_GEOM` en
 `conftest.py`) en vez de `--place`, para no depender también de Nominatim.
 
+### CI
+
+`.github/workflows/tests.yml` corre `pytest -m "not network"` en cada push a
+`main` y en cada PR. **No instala `requirements.txt`**: solo pytest, numpy y
+shapely, sin GDAL. Alcanza porque `flood_monitor.py` importa las librerías
+pesadas *dentro* de las funciones y a nivel de módulo solo usa numpy (shapely
+lo pide `conftest.py`). Ese mínimo es intencional: si alguien sube un import
+pesado al tope de un módulo, el job falla — es lo que mantiene los imports
+perezosos, y con ellos el arranque rápido del `--help`.
+
+Ojo con Python: `datetime.fromisoformat` solo acepta el sufijo `Z` desde 3.11,
+así que `parse_end_date("...T06:30:00Z")` revienta en 3.10. El repo apunta a
+3.12 (`.python-version`) y el workflow lee ese mismo archivo.
+
 **Verificación visual** (lo que los tests no cubren): inspeccionar el quicklook
 PNG contra terreno conocido, el GeoJSON en QGIS/geojson.io, o comparar contra
 Copernicus Global Flood Monitoring
