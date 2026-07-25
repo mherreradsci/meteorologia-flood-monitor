@@ -75,6 +75,14 @@ importan `flood_monitor` / `list_s1_items` por nombre igual que entre sí, y
 - `test_search_window.py` — mockea `stac_catalog` (fixture `fake_stac` en
   `conftest.py`) para fijar el rango de fechas exacto que se le pide a la API
   y cómo se elige entre lo que devuelve, sin red.
+- `test_masks.py` — marcado `raster`. `permanent_water_mask` y `slope_mask`
+  son casi todo E/S, así que en vez de mockear rioxarray estos tests escriben
+  GeoTIFF sintéticos a `tmp_path` y dejan correr el código real (`clip_box`,
+  `reproject_match`, gradiente, dilatación); solo se sustituye la búsqueda
+  STAC, así que no hay red. Los valores son analíticos: una rampa de 10 m por
+  píxel de 30 m da exactamente atan(1/3) = 18.4349°, y un píxel aislado
+  dilatado con `disk(3)` da 29 px. Necesitan rioxarray, que **no** requiere
+  GDAL de sistema: las ruedas manylinux de rasterio lo traen embebido.
 - `test_search_live.py` — marcado `network`. Es determinista pese a pegarle a
   un servicio remoto porque el archivo Sentinel-1 es **inmutable**: las
   aserciones se anclan en cortes históricos (`--end-date 2026-07-17` sobre
@@ -86,13 +94,24 @@ Los tests de red usan un bbox literal de Tongoy (`TONGOY_GEOM` en
 
 ### CI
 
-`.github/workflows/tests.yml` corre `pytest -m "not network"` en cada push a
-`main` y en cada PR. **No instala `requirements.txt`**: solo pytest, numpy y
-shapely, sin GDAL. Alcanza porque `flood_monitor.py` importa las librerías
-pesadas *dentro* de las funciones y a nivel de módulo solo usa numpy (shapely
-lo pide `conftest.py`). Ese mínimo es intencional: si alguien sube un import
-pesado al tope de un módulo, el job falla — es lo que mantiene los imports
-perezosos, y con ellos el arranque rápido del `--help`.
+`.github/workflows/tests.yml` corre **dos jobs en paralelo** en cada push a
+`main` y en cada PR, ninguno con red:
+
+| job | instala | corre |
+|---|---|---|
+| `offline` | pytest, numpy, shapely, scikit-image | `-m "not network and not raster"` |
+| `raster` | lo anterior + rioxarray | `-m raster` |
+
+Están separados a propósito. El job `offline` **no instala rioxarray**, así
+que si alguien sube un import pesado al tope de un módulo, falla en la
+recolección — es lo que mantiene los imports perezosos, y con ellos el
+arranque rápido del `--help`. Metiendo rioxarray en ese mismo job esa alarma
+se apagaría (verificado: con `import rioxarray` a nivel de módulo, `offline`
+da 5 errores y `raster` pasa igual).
+
+Ninguno de los dos necesita `apt install gdal-bin libgdal-dev`: las ruedas
+manylinux de rasterio traen GDAL embebido. El apt del README hace falta solo
+si tu plataforma no tiene rueda y pip compila desde fuente.
 
 Ojo con Python: `datetime.fromisoformat` solo acepta el sufijo `Z` desde 3.11,
 así que `parse_end_date("...T06:30:00Z")` revienta en 3.10. El repo apunta a

@@ -50,13 +50,19 @@ Salidas en `./output/`: `flood_mask_*.tif`, `flood_mask_*.geojson`,
 
 ```bash
 pip install -r requirements-dev.txt   # solo pytest
-pytest                 # desde la raíz del repo (~18 s, consulta la API)
-pytest -m "not network" # solo los offline, sin internet (<1 s)
+pytest                  # desde la raíz del repo (~20 s, consulta la API)
+pytest -m "not network"  # todo lo que no necesita internet (~2 s)
+pytest -m raster         # solo los de GeoTIFF sintéticos
 ```
 
-Cubren el parseo de fechas, la ventana de búsqueda, el nombre de salida y la
-selección de escena contra Planetary Computer. **No** validan la calidad de
-la detección: eso se sigue haciendo mirando el quicklook y comparando con GFM.
+Cubren el parseo de fechas, la ventana de búsqueda, el nombre de salida, la
+detección (umbral de Otsu y su recorte, área mínima, criterio de cambio), las
+dos máscaras (ocurrencia JRC + dilatación, pendiente sobre el DEM) y la
+selección de escena contra Planetary Computer.
+
+**No** validan la calidad de la detección sobre imágenes reales: que el mapa
+sea correcto para tu zona se sigue viendo con el quicklook y comparando con
+GFM.
 
 ## Automatización (cada 6 horas)
 
