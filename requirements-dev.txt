@@ -1,0 +1,4 @@
+# Dependencias solo para correr la suite de tests (tests/).
+# El pipeline en sí no las necesita: ver requirements.txt.
+#   pip install -r requirements-dev.txt && pytest
+pytest>=7.0        # 7.0 trae la opción ini `pythonpath`, que usa pytest.ini

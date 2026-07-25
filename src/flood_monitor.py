@@ -159,7 +159,12 @@ def parse_end_date(s: str | None) -> datetime:
         return datetime.strptime(s, "%Y-%m-%d").replace(
             hour=23, minute=59, second=59, tzinfo=timezone.utc)
     dt = datetime.fromisoformat(s)
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    # Con offset explícito ("...T10:00:00-04:00") hay que convertir, no solo
+    # aceptar: el rango STAC se formatea con sufijo "Z", así que devolver la
+    # hora local declararía como UTC un instante que no lo es.
+    return dt.astimezone(timezone.utc)
 
 
 def slugify(s: str) -> str:

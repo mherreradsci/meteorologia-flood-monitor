@@ -45,10 +45,41 @@ y para pruebas — nombrados `<País>-<Región>-<Comuna>-<Localidad>.geojson`
 (ej. `aoi/Chile-Region_de_Coquimbo-La_huiguera-Chungungo.geojson`). Al
 correr desde `src/`, referenciarlos con `--aoi ../aoi/<archivo>.geojson`.
 
-There is no test suite, linter, or build step in this repo — verification is
-by inspecting the generated outputs (quicklook PNG against known terrain,
-GeoJSON in QGIS/geojson.io) or comparing against Copernicus Global Flood
-Monitoring (https://global-flood.emergency.copernicus.eu/).
+## Tests
+
+There is no linter or build step. There *is* a pytest suite in `tests/`,
+covering AOI-independent logic — it does **not** validate detection quality
+(for that, see "verificación visual" below).
+
+```bash
+pip install -r requirements-dev.txt   # solo pytest; el pipeline no lo necesita
+pytest                                # todo (~18 s, consulta la API)
+pytest -m "not network"               # solo offline (<1 s)
+pytest -m network                     # solo los que consultan Planetary Computer
+```
+
+`pytest.ini` pone `src/` en `sys.path` (`pythonpath = src`), así que los tests
+importan `flood_monitor` / `list_s1_items` por nombre igual que entre sí, y
+`pytest` se corre desde la raíz del repo (no desde `src/`).
+
+- `test_end_date.py`, `test_run_tag.py` — funciones puras (parseo de fechas,
+  slug/tag de salida, conversión a dB).
+- `test_search_window.py` — mockea `stac_catalog` (fixture `fake_stac` en
+  `conftest.py`) para fijar el rango de fechas exacto que se le pide a la API
+  y cómo se elige entre lo que devuelve, sin red.
+- `test_search_live.py` — marcado `network`. Es determinista pese a pegarle a
+  un servicio remoto porque el archivo Sentinel-1 es **inmutable**: las
+  aserciones se anclan en cortes históricos (`--end-date 2026-07-17` sobre
+  Tongoy siempre devuelve la misma escena). Nunca afirmar sobre "la más
+  reciente" en un test: eso cambia cada ~3 días. No descarga rasters.
+
+Los tests de red usan un bbox literal de Tongoy (`TONGOY_GEOM` en
+`conftest.py`) en vez de `--place`, para no depender también de Nominatim.
+
+**Verificación visual** (lo que los tests no cubren): inspeccionar el quicklook
+PNG contra terreno conocido, el GeoJSON en QGIS/geojson.io, o comparar contra
+Copernicus Global Flood Monitoring
+(https://global-flood.emergency.copernicus.eu/).
 
 ## Architecture
 

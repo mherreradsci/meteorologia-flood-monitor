@@ -46,6 +46,18 @@ python flood_monitor.py --aoi mi_zona.geojson --days 15 --threshold -18
 Salidas en `./output/`: `flood_mask_*.tif`, `flood_mask_*.geojson`,
 `quicklook_*.png` y `flood_map_*.html` (abrir en el navegador).
 
+## Tests
+
+```bash
+pip install -r requirements-dev.txt   # solo pytest
+pytest                 # desde la raíz del repo (~18 s, consulta la API)
+pytest -m "not network" # solo los offline, sin internet (<1 s)
+```
+
+Cubren el parseo de fechas, la ventana de búsqueda, el nombre de salida y la
+selección de escena contra Planetary Computer. **No** validan la calidad de
+la detección: eso se sigue haciendo mirando el quicklook y comparando con GFM.
+
 ## Automatización (cada 6 horas)
 
 ```bash
