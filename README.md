@@ -55,10 +55,12 @@ pytest -m "not network"  # todo lo que no necesita internet (~2 s)
 pytest -m raster         # solo los de GeoTIFF sintéticos
 ```
 
-Cubren el parseo de fechas, la ventana de búsqueda, el nombre de salida, la
-detección (umbral de Otsu y su recorte, área mínima, criterio de cambio), las
-dos máscaras (ocurrencia JRC + dilatación, pendiente sobre el DEM) y la
-selección de escena contra Planetary Computer.
+89 tests. Cubren la resolución del AOI (los tres modos de entrada y el buffer
+del geocodificador), el parseo de fechas, la ventana de búsqueda, la lectura y
+conversión a dB, la detección (umbral de Otsu y su recorte, área mínima,
+criterio de cambio), las dos máscaras (ocurrencia JRC + dilatación, pendiente
+sobre el DEM), la escritura de salidas —incluida la reproyección del GeoJSON a
+EPSG:4326— y la selección de escena contra Planetary Computer.
 
 **No** validan la calidad de la detección sobre imágenes reales: que el mapa
 sea correcto para tu zona se sigue viendo con el quicklook y comparando con

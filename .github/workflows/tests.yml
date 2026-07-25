@@ -31,8 +31,9 @@ jobs:
       # geopandas y leafmap necesitan GDAL del sistema (apt) y tardan minutos.
       # La suite offline no los toca porque flood_monitor.py importa las
       # librerías pesadas *dentro* de las funciones; a nivel de módulo solo
-      # necesita numpy. Lo demás son wheels puras: shapely para conftest.py y
-      # scikit-image para el umbral de Otsu y remove_small_objects.
+      # necesita numpy. Lo demás son wheels puras: shapely para el AOI,
+      # scikit-image para Otsu y remove_small_objects, y requests para
+      # geocode_place (se mockea, pero hay que poder importarlo).
       #
       # Ese mínimo es intencional: si alguien sube un import pesado al tope de
       # un módulo, este job falla. Es la red que mantiene los imports perezosos
@@ -41,7 +42,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt "numpy>=1.26" "shapely>=2.0" \
-                      "scikit-image>=0.24"
+                      "scikit-image>=0.24" "requests>=2.32"
 
       # `network` consulta Planetary Computer: fuera de CI para no depender de
       # un servicio externo ni de su latencia (corrélos en local con
@@ -63,16 +64,22 @@ jobs:
         with:
           python-version-file: .python-version
 
-      # rioxarray arrastra rasterio, cuyas ruedas manylinux traen GDAL
-      # embebido: sigue sin hacer falta `apt install gdal-bin libgdal-dev`,
-      # que es lo que tarda minutos.
+      # rioxarray arrastra rasterio y geopandas arrastra pyogrio: las dos
+      # traen GDAL embebido en sus ruedas manylinux, así que sigue sin hacer
+      # falta `apt install gdal-bin libgdal-dev`, que es lo que tarda minutos.
+      # leafmap queda fuera a propósito: el mapa HTML ya degrada suave si no
+      # está, y arrastra medio ecosistema de folium.
       - name: Instalar dependencias de ráster
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt "numpy>=1.26" "shapely>=2.0" \
-                      "scikit-image>=0.24" "rioxarray>=0.15"
+                      "scikit-image>=0.24" "rioxarray>=0.15" \
+                      "geopandas>=1.0" "matplotlib>=3.9" "requests>=2.32"
 
       # Escriben GeoTIFF sintéticos a disco y ejercitan el código real
-      # (clip_box, reproject_match, gradiente, dilatación). Sin red.
+      # (clip_box, reproject_match, gradiente, dilatación, vectorización y la
+      # reproyección a EPSG:4326). Sin red.
       - name: pytest -m raster
+        env:
+          MPLBACKEND: Agg   # sin pantalla en el runner
         run: pytest -m raster

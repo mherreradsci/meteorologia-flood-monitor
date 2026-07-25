@@ -47,14 +47,17 @@ correr desde `src/`, referenciarlos con `--aoi ../aoi/<archivo>.geojson`.
 
 ## Tests
 
-There is no linter or build step. There *is* a pytest suite in `tests/`,
-covering AOI-independent logic — it does **not** validate detection quality
-(for that, see "verificación visual" below).
+There is no linter or build step. There *is* a pytest suite en `tests/` (89
+tests) que cubre todo el pipeline salvo `main()` —el pegamento— y
+`print_items`. **No** valida la calidad de la detección sobre imágenes reales
+(para eso, "verificación visual" más abajo).
 
 ```bash
 pip install -r requirements-dev.txt   # solo pytest; el pipeline no lo necesita
 pytest                                # todo (~18 s, consulta la API)
-pytest -m "not network"               # solo offline (<1 s)
+pytest -m "not network"               # sin internet (~2 s)
+pytest -m "not network and not raster"  # además sin GDAL (<1 s)
+pytest -m raster                      # solo los de GeoTIFF sintéticos
 pytest -m network                     # solo los que consultan Planetary Computer
 ```
 
@@ -64,6 +67,22 @@ importan `flood_monitor` / `list_s1_items` por nombre igual que entre sí, y
 
 - `test_end_date.py`, `test_run_tag.py` — funciones puras (parseo de fechas,
   slug/tag de salida, conversión a dB).
+- `test_aoi.py` — `load_aoi` y `geocode_place`. Es la primera etapa y la que
+  ningún otro test vigila: con el AOI equivocado, todo lo demás sigue en verde
+  y el mapa sale bien calculado del lugar equivocado. Cubre las tres
+  envolturas de GeoJSON, que un `FeatureCollection` de varios features usa
+  solo el primero (limitación conocida, ahí documentada) y la matemática del
+  buffer km→grados con la corrección por `cos(lat)`. Incluye un test
+  parametrizado sobre los `aoi/*.geojson` del repo, así que esos ejemplos son
+  documentación que CI protege.
+- `test_cli.py` — contrato de `parse_args` en los dos scripts: exclusividad
+  mutua de `--aoi/--bbox/--place` y los defaults que documentan README y este
+  archivo (si cambian acá, el test avisa).
+- `test_list_items.py` — `search_recent_s1_items`: el intervalo abierto
+  `../{end}`, `sortby` + `max_items` del lado del servidor y el reordenado
+  cliente. Ojo con el parcheo: el hermano hace
+  `from flood_monitor import stac_catalog`, o sea que guarda su propia
+  referencia; por eso `fake_stac` acepta a qué módulo aplicarse.
 - `test_detection.py` — el núcleo de la decisión: `water_threshold` (umbral
   fijo vs Otsu y su recorte a [-25, -14]) y `detect_flood` (umbral, nodata,
   el borde exacto de `--min-area-px`, las dos máscaras y el criterio de
@@ -83,6 +102,21 @@ importan `flood_monitor` / `list_s1_items` por nombre igual que entre sí, y
   píxel de 30 m da exactamente atan(1/3) = 18.4349°, y un píxel aislado
   dilatado con `disk(3)` da 29 px. Necesitan rioxarray, que **no** requiere
   GDAL de sistema: las ruedas manylinux de rasterio lo traen embebido.
+- `test_read_vh.py` — marcado `raster`. El cableado de `read_vh_db` sobre un
+  GeoTIFF real: potencia lineal → dB, los ceros terminando en NaN vía
+  `DB_NODATA`, el colapso de la banda y el recorte al bbox.
+- `test_outputs.py` — marcado `raster`. Lo que se lleva el usuario, y sobre
+  todo la **única transformación de coordenadas del pipeline**: la máscara se
+  calcula en UTM y el GeoJSON se escribe en EPSG:4326. El test compara contra
+  una conversión hecha por una ruta independiente (`rasterio.warp` en vez de
+  geopandas/pyproj). Sin eso, un error de reproyección dejaría toda la suite
+  en verde con los polígonos a cientos de km. `OUTPUT_DIR` se apunta a
+  `tmp_path` con monkeypatch, ya que es un global relativo al cwd.
+- El andamiaje de los tests `raster` (grillas UTM 19S a 30 m, escritura de
+  GeoTIFF, bbox en lon/lat) vive en `tests/raster_helpers.py`, aparte de
+  `helpers.py` porque este último lo usan también los tests que corren sin
+  GDAL. El origen elegido cae sobre Tongoy, así que las coordenadas que
+  aparecen en los asserts son reconocibles.
 - `test_search_live.py` — marcado `network`. Es determinista pese a pegarle a
   un servicio remoto porque el archivo Sentinel-1 es **inmutable**: las
   aserciones se anclan en cortes históricos (`--end-date 2026-07-17` sobre
@@ -99,8 +133,8 @@ Los tests de red usan un bbox literal de Tongoy (`TONGOY_GEOM` en
 
 | job | instala | corre |
 |---|---|---|
-| `offline` | pytest, numpy, shapely, scikit-image | `-m "not network and not raster"` |
-| `raster` | lo anterior + rioxarray | `-m raster` |
+| `offline` | pytest, numpy, shapely, scikit-image, requests | `-m "not network and not raster"` |
+| `raster` | lo anterior + rioxarray, geopandas, matplotlib | `-m raster` |
 
 Están separados a propósito. El job `offline` **no instala rioxarray**, así
 que si alguien sube un import pesado al tope de un módulo, falla en la

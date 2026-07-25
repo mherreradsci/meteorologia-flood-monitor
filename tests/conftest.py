@@ -18,20 +18,29 @@ TONGOY_GEOM = mapping(box(*TONGOY_BBOX))
 
 @pytest.fixture
 def fake_stac(monkeypatch):
-    """Reemplaza `flood_monitor.stac_catalog()` por un catálogo falso.
+    """Reemplaza `stac_catalog()` por un catálogo falso.
 
-    Devuelve `install(items) -> registro`: los items que la búsqueda debe
-    devolver, y a cambio un dict donde queda guardado (`registro["kwargs"]`)
-    con qué argumentos se llamó a `.search()`. Sirve para afirmar sobre la
-    ventana de fechas exacta que se le pide a la API, sin tocar la red.
+    Devuelve `install(items, modulo=flood_monitor) -> registro`: los items que
+    la búsqueda debe devolver, y a cambio un dict donde queda guardado
+    (`registro["kwargs"]`) con qué argumentos se llamó a `.search()`. Sirve
+    para afirmar sobre la ventana de fechas exacta que se le pide a la API,
+    sin tocar la red.
+
+    El parámetro `modulo` importa: `list_s1_items` hace
+    `from flood_monitor import stac_catalog`, o sea que se queda con su propia
+    referencia al nombre. Parchear solo `flood_monitor` no lo alcanzaría.
     """
     import flood_monitor
 
-    def install(items):
+    def install(items, modulo=None):
         registro: dict = {}
 
         class FakeSearch:
+            # `search_latest_s1` usa item_collection(); el hermano usa items().
             def item_collection(self):
+                return list(items)
+
+            def items(self):
                 return list(items)
 
         class FakeCatalog:
@@ -39,7 +48,7 @@ def fake_stac(monkeypatch):
                 registro["kwargs"] = kwargs
                 return FakeSearch()
 
-        monkeypatch.setattr(flood_monitor, "stac_catalog",
+        monkeypatch.setattr(modulo or flood_monitor, "stac_catalog",
                             lambda: FakeCatalog())
         return registro
 

@@ -19,57 +19,13 @@ import numpy as np
 import pytest
 
 # Todo el módulo depende de GDAL; sin él se saltea entero en vez de fallar.
-rioxarray = pytest.importorskip("rioxarray")
-
-import xarray as xr  # noqa: E402
-from rasterio.transform import from_origin  # noqa: E402
-from rasterio.warp import transform_bounds  # noqa: E402
+pytest.importorskip("rioxarray")
 
 from flood_monitor import permanent_water_mask, slope_mask  # noqa: E402
+from raster_helpers import (RES, X0, ItemConRaster, bbox_lonlat,  # noqa: E402
+                            geotiff, grilla)
 
 pytestmark = pytest.mark.raster
-
-# UTM 19S a 30 m/px: el mismo huso y resolución en que llegan las escenas
-# Sentinel-1 RTC sobre la Región de Coquimbo.
-CRS = "EPSG:32719"
-RES = 30.0
-X0, Y0 = 260_000.0, 6_650_000.0
-
-
-# --------------------------------------------------------------------------- #
-# Andamiaje: grillas sintéticas
-# --------------------------------------------------------------------------- #
-def grilla(values: np.ndarray, x0: float = X0, y0: float = Y0):
-    """DataArray georreferenciado con la grilla de arriba."""
-    h, w = values.shape
-    da = xr.DataArray(
-        values.astype("float32"), dims=("y", "x"),
-        coords={"y": y0 - np.arange(h) * RES - RES / 2,
-                "x": x0 + np.arange(w) * RES + RES / 2},
-    )
-    return da.rio.write_crs(CRS).rio.write_transform(from_origin(x0, y0, RES, RES))
-
-
-def geotiff(tmp_path, nombre: str, values: np.ndarray, x0: float = X0):
-    ruta = tmp_path / nombre
-    grilla(values, x0=x0).rio.to_raster(ruta)
-    return str(ruta)
-
-
-def bbox_lonlat(alto: int, ancho: int) -> tuple:
-    """El bbox en lon/lat que cubre la grilla, que es lo que reciben las
-    funciones (el AOI siempre viaja en EPSG:4326)."""
-    return transform_bounds(CRS, "EPSG:4326",
-                            X0, Y0 - alto * RES, X0 + ancho * RES, Y0)
-
-
-class ItemConRaster:
-    """Item STAC mínimo cuyo asset apunta a un archivo local."""
-
-    def __init__(self, **assets: str):
-        self.id = "FAKE_RASTER"
-        self.assets = {k: type("A", (), {"href": v})() for k, v in assets.items()}
-
 
 GEOM = {"type": "Point", "coordinates": [-71.49, -30.25]}
 
