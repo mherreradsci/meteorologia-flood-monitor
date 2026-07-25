@@ -12,6 +12,7 @@ Uso:
     python flood_monitor.py --place Tongoy                # POI en Región de Coquimbo
     python flood_monitor.py --place Ovalle --buffer-km 8
     python flood_monitor.py --place "La Serena" --change  # cambio entre 2 fechas
+    python flood_monitor.py --place Tongoy --end-date 2025-03-14  # fecha pasada
     python flood_monitor.py --bbox ... --days 12 --threshold -17.5
 
 Salidas (en ./output/), con sufijo de trazabilidad
@@ -63,6 +64,11 @@ def parse_args() -> argparse.Namespace:
                         "(default: 5)")
     p.add_argument("--days", type=int, default=10,
                    help="Buscar imágenes de los últimos N días (default: 10)")
+    p.add_argument("--end-date", type=str, default=None,
+                   help="Fecha de corte (YYYY-MM-DD o ISO 8601, UTC): usa la "
+                        "última imagen anterior a esa fecha en vez de la más "
+                        "reciente. Útil para validar contra una fecha "
+                        "concreta. Default: ahora")
     p.add_argument("--threshold", type=float, default=None,
                    help="Umbral fijo en dB para VH (ej: -18). "
                         "Si se omite, se calcula con Otsu.")
@@ -141,6 +147,21 @@ def load_aoi(args: argparse.Namespace):
     return mapping(geom), geom.bounds
 
 
+def parse_end_date(s: str | None) -> datetime:
+    """Parsea --end-date a datetime aware UTC. Sin --end-date, usa el
+    momento actual. Con solo fecha (YYYY-MM-DD), usa el final de ese día
+    (23:59:59 UTC) para incluir todas las imágenes de esa fecha.
+
+    Compartida con list_s1_items.py (que la importa desde acá)."""
+    if s is None:
+        return datetime.now(timezone.utc)
+    if len(s) == 10:  # "YYYY-MM-DD"
+        return datetime.strptime(s, "%Y-%m-%d").replace(
+            hour=23, minute=59, second=59, tzinfo=timezone.utc)
+    dt = datetime.fromisoformat(s)
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 def slugify(s: str) -> str:
     """Nombre apto para archivo: solo espacios en blanco -> '_'.
     Conserva tildes y 'ñ'/'Ñ'; solo reemplaza '/' (separador de rutas)."""
@@ -189,25 +210,34 @@ def stac_catalog():
     )
 
 
-def search_latest_s1(geom: dict, days: int):
-    """Busca el item Sentinel-1 RTC más reciente que intersecte el AOI."""
-    end = datetime.now(timezone.utc)
+def search_latest_s1(geom: dict, days: int, end: datetime):
+    """Busca el item Sentinel-1 RTC más reciente anterior a `end` que
+    intersecte el AOI, dentro de una ventana de `days` días hacia atrás.
+    Sin --end-date, `end` es "ahora" y equivale a la imagen más reciente."""
     start = end - timedelta(days=days)
 
     search = stac_catalog().search(
         collections=["sentinel-1-rtc"],
         intersects=geom,
-        datetime=f"{start:%Y-%m-%d}/{end:%Y-%m-%d}",
+        # Con hora, no solo fecha: --end-date YYYY-MM-DD resuelve a las
+        # 23:59:59 y así no se pierden las escenas de ese mismo día.
+        datetime=f"{start:%Y-%m-%dT%H:%M:%SZ}/{end:%Y-%m-%dT%H:%M:%SZ}",
     )
     items = sorted(search.item_collection(),
                    key=lambda it: it.datetime, reverse=True)
     if not items:
-        sys.exit(f"[!] No hay imágenes Sentinel-1 en los últimos {days} días "
-                 f"para ese AOI. Probá aumentar --days.")
+        sys.exit(f"[!] No hay imágenes Sentinel-1 en los {days} días previos "
+                 f"a {end:%Y-%m-%d} para ese AOI. Probá aumentar --days o "
+                 f"mover --end-date.")
     item = items[0]
+    now = datetime.now(timezone.utc)
+    age = f"hace {(now - item.datetime).days} días"
+    # Con --end-date la antigüedad real no dice nada sobre la fecha pedida:
+    # informamos además cuánto quedó la escena antes del corte.
+    if (now - end).total_seconds() > 60:
+        age += f", {(end - item.datetime).days} días antes del corte"
     print(f"[+] Imagen encontrada: {item.id}")
-    print(f"    Fecha: {item.datetime:%Y-%m-%d %H:%M} UTC "
-          f"(hace {(end - item.datetime).days} días)")
+    print(f"    Fecha: {item.datetime:%Y-%m-%d %H:%M} UTC ({age})")
     return item
 
 
@@ -466,7 +496,8 @@ def main() -> None:
     geom, bbox = load_aoi(args)
     print(f"[+] AOI bbox: {tuple(round(v, 4) for v in bbox)}")
 
-    item = search_latest_s1(geom, args.days)
+    end = parse_end_date(args.end_date)
+    item = search_latest_s1(geom, args.days, end)
     vh_db = read_vh_db(item, bbox)
 
     ref_db = ref_item = None

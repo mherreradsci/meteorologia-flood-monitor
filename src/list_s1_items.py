@@ -21,7 +21,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from flood_monitor import DEFAULT_REGION, load_aoi, stac_catalog
+from flood_monitor import (DEFAULT_REGION, load_aoi, parse_end_date,
+                           stac_catalog)
 
 
 def parse_args() -> argparse.Namespace:
@@ -54,19 +55,6 @@ def parse_args() -> argparse.Namespace:
                          "a --end-date. Default: sin límite (todo el "
                          "archivo)")
     return p.parse_args()
-
-
-def parse_end_date(s: str | None) -> datetime:
-    """Parsea --end-date a datetime aware UTC. Sin --end-date, usa el
-    momento actual. Con solo fecha (YYYY-MM-DD), usa el final de ese día
-    (23:59:59 UTC) para incluir todas las imágenes de esa fecha."""
-    if s is None:
-        return datetime.now(timezone.utc)
-    if len(s) == 10:  # "YYYY-MM-DD"
-        return datetime.strptime(s, "%Y-%m-%d").replace(
-            hour=23, minute=59, second=59, tzinfo=timezone.utc)
-    dt = datetime.fromisoformat(s)
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
 def search_recent_s1_items(geom: dict, n: int, end: datetime,

@@ -37,6 +37,7 @@ python flood_monitor.py --place "La Serena" --change          # two-date change 
 python flood_monitor.py --bbox -58.65 -34.75 -58.30 -34.45     # xmin ymin xmax ymax, lon/lat
 python flood_monitor.py --aoi mi_zona.geojson
 python flood_monitor.py --aoi mi_zona.geojson --days 15 --threshold -18
+python flood_monitor.py --place Tongoy --end-date 2025-03-14   # fecha pasada
 ```
 
 `aoi/` (raíz del repo) guarda GeoJSON de referencia reutilizables como ejemplo
@@ -60,8 +61,16 @@ driven by `main()`:
    `--buffer-km`, not Nominatim's bounding box (admin boundaries can be
    ~100 km wide).
 2. **Image search** (`search_latest_s1`, `search_reference_s1`) — queries the
-   `sentinel-1-rtc` STAC collection. Reference-image search (for `--change`)
-   filters on `sat:relative_orbit` + `sat:orbit_state` so the two acquisitions
+   `sentinel-1-rtc` STAC collection. The search window is `[end - --days, end]`,
+   where `end` comes from `parse_end_date(--end-date)` and defaults to *now* —
+   so `--end-date` reruns the whole pipeline "as of" a past date (for validating
+   against another source on a specific day). A bare `YYYY-MM-DD` resolves to
+   23:59:59 UTC so that day's own acquisitions are included. If no scene falls
+   in the window the script exits rather than silently reaching further back;
+   this is deliberate, so a validation run never compares against a scene weeks
+   away from the requested date. Reference-image search (for `--change`)
+   anchors on the *chosen* item's datetime, so it follows `--end-date` back
+   automatically, and filters on `sat:relative_orbit` + `sat:orbit_state` so the two acquisitions
    share geometry, and requires ≥6 days separation (S1 minimum revisit).
 3. **Read + convert** (`read_vh_db`) — clips the VH asset to bbox, converts
    linear power to dB (`to_db`), treating `DB_NODATA = -9999.0` as the
@@ -104,7 +113,10 @@ N items Sentinel-1 RTC más recientes que intersectan un AOI, buscando hacia
 atrás desde una fecha de fin (`--end-date`, default "ahora"). Reutiliza
 `load_aoi`/`geocode_place`/`stac_catalog`/`DEFAULT_REGION` de
 `flood_monitor.py` vía import directo (mismo directorio, sin paquete), y
-comparte la misma convención de AOI (`--aoi`/`--bbox`/`--place`).
+comparte la misma convención de AOI (`--aoi`/`--bbox`/`--place`). También
+importa de ahí `parse_end_date`, que vive en `flood_monitor.py` porque ambos
+scripts aceptan `--end-date` con idéntica semántica (el import va siempre en
+esa dirección: `list_s1_items` → `flood_monitor`, nunca al revés).
 
 A diferencia de `search_latest_s1` (que ensancha una ventana fija de días y
 ordena del lado del cliente), usa la STAC API **Sort extension**

@@ -34,6 +34,11 @@ python flood_monitor.py --bbox -58.65 -34.75 -58.30 -34.45
 python flood_monitor.py --aoi mi_zona.geojson
 python flood_monitor.py --aoi ../aoi/Chile-Region_de_Coquimbo-La_huiguera-Chungungo.geojson
 
+# Validar una fecha pasada: usa la última imagen anterior al corte, en vez
+# de la más reciente (útil para comparar contra otra fuente en esa fecha):
+python flood_monitor.py --place Tongoy --end-date 2025-03-14
+python flood_monitor.py --place Tongoy --end-date 2025-03-14 --days 15
+
 # Opciones útiles:
 python flood_monitor.py --aoi mi_zona.geojson --days 15 --threshold -18
 ```
@@ -60,5 +65,11 @@ crontab -e
   (default 5°; `--max-slope 0` la desactiva).
 - **Latencia real**: Sentinel-1 revisita cada ~2-6 días según la zona (con S-1A
   y S-1C operativos). El script informa cuántos días tiene la imagen usada.
+- **Fecha explícita**: `--end-date YYYY-MM-DD` corre el pipeline "como si fuera"
+  esa fecha: busca hacia atrás desde el corte (23:59:59 UTC de ese día) dentro
+  de la ventana de `--days`. Si no hay escena en esa ventana el script falla en
+  vez de traer una imagen lejana, para no validar contra una fecha equivocada:
+  subí `--days` o movéla. Para ver qué escenas hay disponibles antes de correr,
+  usá `list_s1_items.py --end-date ...`.
 - **Validación**: comparar contra Copernicus Global Flood Monitoring (GFM):
   https://global-flood.emergency.copernicus.eu/
