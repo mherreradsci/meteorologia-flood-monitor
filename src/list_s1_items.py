@@ -100,8 +100,13 @@ def print_items(items, end: datetime) -> None:
         orbit = it.properties.get("sat:relative_orbit", "?")
         state = it.properties.get("sat:orbit_state", "?")
         platform = it.properties.get("platform", "?")
+        # STAC admite `datetime: null` (items que declaran start/end_datetime).
+        # EPOCH los ordena al fondo, pero formatear None revienta: acá se
+        # listan igual, que para eso está el listado.
+        fecha = (f"{it.datetime:%Y-%m-%d %H:%M:%S} UTC" if it.datetime
+                 else "sin fecha declarada")
         print(f"  {i:>2}. {it.id}")
-        print(f"      Fecha: {it.datetime:%Y-%m-%d %H:%M:%S} UTC  "
+        print(f"      Fecha: {fecha}  "
               f"(órbita relativa {orbit}, {state}, {platform})")
 
 

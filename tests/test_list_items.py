@@ -12,7 +12,7 @@ import pytest
 
 import list_s1_items
 from helpers import FakeItem, utc
-from list_s1_items import search_recent_s1_items
+from list_s1_items import print_items, search_recent_s1_items
 
 GEOM = {"type": "Point", "coordinates": [-71.49, -30.25]}
 
@@ -96,3 +96,69 @@ def test_sin_resultados_corta_con_mensaje(fake_stac):
     mensaje = str(exc.value)
     assert "2026-07-17" in mensaje
     assert "30 días" in mensaje
+
+
+# --------------------------------------------------------------------------- #
+# print_items — el listado es *la* salida de este script
+# --------------------------------------------------------------------------- #
+def test_lista_numerada_desde_uno_con_id_y_fecha(capsys):
+    """El número de orden es lo que se usa para elegir un item a mano y
+    pasárselo a flood_monitor como --end-date."""
+    items = [FakeItem(utc(2026, 7, 16, 10, 2, 47), "S1D_primera"),
+             FakeItem(utc(2026, 7, 12, 23, 28, 23), "S1C_segunda")]
+
+    print_items(items, utc(2026, 7, 17, 23, 59, 59))
+
+    salida = capsys.readouterr().out
+    assert "2 item(s)" in salida
+    assert "2026-07-17 23:59 UTC" in salida     # la fecha de corte
+    assert " 1. S1D_primera" in salida
+    assert " 2. S1C_segunda" in salida
+    assert "2026-07-16 10:02:47 UTC" in salida
+
+
+def test_muestra_orbita_estado_y_plataforma(capsys):
+    """Son los datos con los que se decide si dos escenas son comparables:
+    la referencia de --change exige misma órbita relativa y mismo sentido."""
+    item = FakeItem(utc(2026, 7, 16), "S1D", orbit=156, state="descending")
+    item.properties["platform"] = "sentinel-1d"
+
+    print_items([item], utc(2026, 7, 17))
+
+    salida = capsys.readouterr().out
+    assert "órbita relativa 156" in salida
+    assert "descending" in salida
+    assert "sentinel-1d" in salida
+
+
+def test_las_propiedades_ausentes_salen_como_interrogacion(capsys):
+    """Un item incompleto se lista igual: es una utilidad de inspección, no
+    tiene por qué exigir metadatos completos."""
+    item = FakeItem(utc(2026, 7, 16), "S1_pelado")
+    item.properties = {}
+
+    print_items([item], utc(2026, 7, 17))
+
+    assert "órbita relativa ?, ?, ?" in capsys.readouterr().out
+
+
+def test_un_item_sin_fecha_se_lista_en_vez_de_reventar(capsys):
+    """STAC admite `datetime: null` y este script existe justamente para
+    mirar qué hay: formatear None tiraba TypeError y se llevaba puesto el
+    listado entero, incluidos los items que sí tenían fecha."""
+    sin_fecha = FakeItem(utc(2026, 7, 20), "S1_sin_fecha")
+    sin_fecha.datetime = None
+
+    print_items([sin_fecha, FakeItem(utc(2026, 7, 16), "S1_con_fecha")],
+                utc(2026, 7, 17))
+
+    salida = capsys.readouterr().out
+    assert "sin fecha declarada" in salida
+    assert "S1_con_fecha" in salida
+    assert "2026-07-16" in salida
+
+
+def test_una_lista_vacia_no_rompe(capsys):
+    print_items([], utc(2026, 7, 17))
+
+    assert "0 item(s)" in capsys.readouterr().out

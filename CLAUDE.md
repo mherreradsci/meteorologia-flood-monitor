@@ -47,10 +47,10 @@ correr desde `src/`, referenciarlos con `--aoi ../aoi/<archivo>.geojson`.
 
 ## Tests
 
-There is no linter or build step. There *is* a pytest suite en `tests/` (89
-tests) que cubre todo el pipeline salvo `main()` —el pegamento— y
-`print_items`. **No** valida la calidad de la detección sobre imágenes reales
-(para eso, "verificación visual" más abajo).
+There is no linter or build step. There *is* a pytest suite en `tests/` (103
+tests) que cubre todas las funciones de ambos scripts. **No** valida la
+calidad de la detección sobre imágenes reales (para eso, "verificación
+visual" más abajo).
 
 ```bash
 pip install -r requirements-dev.txt   # solo pytest; el pipeline no lo necesita
@@ -112,6 +112,13 @@ importan `flood_monitor` / `list_s1_items` por nombre igual que entre sí, y
   geopandas/pyproj). Sin eso, un error de reproyección dejaría toda la suite
   en verde con los polígonos a cientos de km. `OUTPUT_DIR` se apunta a
   `tmp_path` con monkeypatch, ya que es un global relativo al cwd.
+- `test_main.py` — marcado `raster`. `main()` de punta a punta: se sustituye
+  solo el catálogo STAC (la frontera de red) por uno que sirve GeoTIFF
+  sintéticos y el pipeline real corre entero. Lo que verifica es lo único que
+  ningún test aislado puede ver: que el valor de cada opción de la CLI llegue
+  a la etapa que corresponde —cruzar `--min-area-px` con `--max-slope` no
+  rompería ningún otro test— y las tres ramas de `--change`. Cubre también
+  `main()` del hermano.
 - El andamiaje de los tests `raster` (grillas UTM 19S a 30 m, escritura de
   GeoTIFF, bbox en lon/lat) vive en `tests/raster_helpers.py`, aparte de
   `helpers.py` porque este último lo usan también los tests que corren sin

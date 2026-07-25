@@ -55,7 +55,7 @@ pytest -m "not network"  # todo lo que no necesita internet (~2 s)
 pytest -m raster         # solo los de GeoTIFF sintéticos
 ```
 
-89 tests. Cubren la resolución del AOI (los tres modos de entrada y el buffer
+103 tests. Cubren la resolución del AOI (los tres modos de entrada y el buffer
 del geocodificador), el parseo de fechas, la ventana de búsqueda, la lectura y
 conversión a dB, la detección (umbral de Otsu y su recorte, área mínima,
 criterio de cambio), las dos máscaras (ocurrencia JRC + dilatación, pendiente
