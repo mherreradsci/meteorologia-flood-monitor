@@ -51,6 +51,20 @@ def test_elige_la_escena_mas_reciente_del_lote(fake_stac):
     assert search_latest_s1(GEOM, 10, utc(2026, 7, 17)).id == "S1D_nueva"
 
 
+def test_un_item_sin_fecha_no_rompe_el_orden(fake_stac):
+    """STAC permite `datetime: null` (items que usan start/end_datetime).
+
+    Ordenar por ese campo sin protección compara None con datetime y tira
+    TypeError. Sentinel-1 RTC siempre trae fecha, pero un item sin ella no
+    debe voltear la corrida: va al fondo y gana el que sí la tiene.
+    """
+    sin_fecha = FakeItem(utc(2026, 7, 20), "S1_sin_fecha")
+    sin_fecha.datetime = None
+    fake_stac([sin_fecha, FakeItem(utc(2026, 7, 16, 10, 2), "S1_con_fecha")])
+
+    assert search_latest_s1(GEOM, 10, utc(2026, 7, 17)).id == "S1_con_fecha"
+
+
 def test_ventana_vacia_falla_con_mensaje_util(fake_stac):
     """Sin escena en la ventana el script corta, no retrocede en silencio.
 

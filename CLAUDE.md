@@ -159,9 +159,16 @@ atrás desde una fecha de fin (`--end-date`, default "ahora"). Reutiliza
 `load_aoi`/`geocode_place`/`stac_catalog`/`DEFAULT_REGION` de
 `flood_monitor.py` vía import directo (mismo directorio, sin paquete), y
 comparte la misma convención de AOI (`--aoi`/`--bbox`/`--place`). También
-importa de ahí `parse_end_date`, que vive en `flood_monitor.py` porque ambos
-scripts aceptan `--end-date` con idéntica semántica (el import va siempre en
-esa dirección: `list_s1_items` → `flood_monitor`, nunca al revés).
+importa de ahí `parse_end_date` y `EPOCH`, que viven en `flood_monitor.py`
+porque ambos scripts aceptan `--end-date` con idéntica semántica y ordenan
+items STAC igual (el import va siempre en esa dirección: `list_s1_items` →
+`flood_monitor`, nunca al revés).
+
+`EPOCH` existe porque STAC permite `datetime: null` (items que declaran
+start/end_datetime en su lugar): ordenar por ese campo sin protección compara
+None con datetime y tira `TypeError`. Con `key=lambda it: it.datetime or EPOCH`
+esos items caen al fondo. Por eso `search_latest_s1` puede afirmar que, si el
+elegido no tiene fecha, es que ninguno la tenía.
 
 A diferencia de `search_latest_s1` (que ensancha una ventana fija de días y
 ordena del lado del cliente), usa la STAC API **Sort extension**

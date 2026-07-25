@@ -40,6 +40,11 @@ OUTPUT_DIR = Path("output")
 DB_NODATA = -9999.0
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 DEFAULT_REGION = "Región de Coquimbo, Chile"
+# STAC permite items sin `datetime` (los que declaran start/end_datetime en su
+# lugar). Sentinel-1 RTC siempre lo trae, pero ordenar por un valor que puede
+# ser None revienta al comparar, así que esos items van al fondo. Compartida
+# con list_s1_items.py, para que ambos scripts traten el caso igual.
+EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 
 
 # --------------------------------------------------------------------------- #
@@ -229,20 +234,27 @@ def search_latest_s1(geom: dict, days: int, end: datetime):
         datetime=f"{start:%Y-%m-%dT%H:%M:%SZ}/{end:%Y-%m-%dT%H:%M:%SZ}",
     )
     items = sorted(search.item_collection(),
-                   key=lambda it: it.datetime, reverse=True)
+                   key=lambda it: it.datetime or EPOCH, reverse=True)
     if not items:
         sys.exit(f"[!] No hay imágenes Sentinel-1 en los {days} días previos "
                  f"a {end:%Y-%m-%d} para ese AOI. Probá aumentar --days o "
                  f"mover --end-date.")
     item = items[0]
+    item_dt = item.datetime
+    if item_dt is None:
+        # Los items sin fecha quedan al fondo del orden (EPOCH), así que
+        # llegar acá significa que ninguno la trae. Sin fecha no hay forma
+        # de informar la antigüedad ni de etiquetar la salida.
+        sys.exit(f"[!] Ninguna imagen en la ventana declara fecha de "
+                 f"adquisición (la más nueva es {item.id}). No puedo usarla.")
     now = datetime.now(timezone.utc)
-    age = f"hace {(now - item.datetime).days} días"
+    age = f"hace {(now - item_dt).days} días"
     # Con --end-date la antigüedad real no dice nada sobre la fecha pedida:
     # informamos además cuánto quedó la escena antes del corte.
     if (now - end).total_seconds() > 60:
-        age += f", {(end - item.datetime).days} días antes del corte"
+        age += f", {(end - item_dt).days} días antes del corte"
     print(f"[+] Imagen encontrada: {item.id}")
-    print(f"    Fecha: {item.datetime:%Y-%m-%d %H:%M} UTC ({age})")
+    print(f"    Fecha: {item_dt:%Y-%m-%d %H:%M} UTC ({age})")
     return item
 
 
@@ -262,7 +274,7 @@ def search_reference_s1(geom: dict, current, ref_days: int):
                "sat:orbit_state": {"eq": state}},
     )
     items = sorted(search.item_collection(),
-                   key=lambda it: it.datetime, reverse=True)
+                   key=lambda it: it.datetime or EPOCH, reverse=True)
     if not items:
         return None
     ref = items[0]
@@ -275,16 +287,18 @@ def search_reference_s1(geom: dict, current, ref_days: int):
 
 def read_vh_db(item, bbox):
     """Lee la banda VH recortada al bbox y la devuelve en dB (rioxarray)."""
-    import rioxarray  # noqa: F401  (registra el accessor .rio)
-    import xarray as xr  # noqa: F401
+    import rioxarray
+    import xarray as xr
 
     href = item.assets["vh"].href
-    da = (
-        __import__("rioxarray")
-        .open_rasterio(href, masked=True)
-        .rio.clip_box(*bbox, crs="EPSG:4326")
-        .squeeze("band", drop=True)
-    )
+    raw = rioxarray.open_rasterio(href, masked=True)
+    # open_rasterio devuelve Dataset | DataArray | list[Dataset]: la lista
+    # aparece en formatos con varios subdatasets (NetCDF/HDF), nunca en un
+    # COG GeoTIFF como los assets de Sentinel-1 RTC.
+    assert isinstance(raw, xr.DataArray), f"esperaba un DataArray, no {type(raw)}"
+    da = (raw
+          .rio.clip_box(*bbox, crs="EPSG:4326")
+          .squeeze("band", drop=True))
     vh_db = da.copy(data=to_db(da.values))
     vh_db = vh_db.where(vh_db != DB_NODATA)
     print(f"[+] VH leída: {vh_db.shape[1]}x{vh_db.shape[0]} px, "
@@ -315,6 +329,7 @@ def permanent_water_mask(geom: dict, bbox, template):
     reproyectada a la grilla de `template`. Si falla, devuelve None."""
     try:
         import rioxarray
+        import xarray as xr
         from rioxarray.merge import merge_arrays
 
         items = list(stac_catalog().search(collections=["jrc-gsw"],
@@ -328,8 +343,13 @@ def permanent_water_mask(geom: dict, bbox, template):
         pbbox = (bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad)
         tiles = []
         for it in items:
-            da = (rioxarray.open_rasterio(it.assets["occurrence"].href,
+            raw = rioxarray.open_rasterio(it.assets["occurrence"].href,
                                           masked=True)
+            # Mismo caso que en read_vh_db: los tiles JRC son COG, así que
+            # open_rasterio devuelve DataArray y no la lista de Datasets que
+            # su firma también admite.
+            assert isinstance(raw, xr.DataArray)
+            da = (raw
                   .rio.clip_box(*pbbox, crs="EPSG:4326")
                   .squeeze("band", drop=True))
             tiles.append(da)
@@ -358,6 +378,7 @@ def slope_mask(geom: dict, bbox, template, max_slope_deg: float):
         return None
     try:
         import rioxarray
+        import xarray as xr
         from rasterio.enums import Resampling
         from rioxarray.merge import merge_arrays
 
@@ -370,7 +391,9 @@ def slope_mask(geom: dict, bbox, template, max_slope_deg: float):
         pbbox = (bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad)
         tiles = []
         for it in items:
-            da = (rioxarray.open_rasterio(it.assets["data"].href, masked=True)
+            raw = rioxarray.open_rasterio(it.assets["data"].href, masked=True)
+            assert isinstance(raw, xr.DataArray)  # COG, ver read_vh_db
+            da = (raw
                   .rio.clip_box(*pbbox, crs="EPSG:4326")
                   .squeeze("band", drop=True))
             tiles.append(da)
@@ -454,9 +477,13 @@ def save_outputs(vh_db, flood: np.ndarray, item, bbox, tag: str,
 
     # Quicklook PNG (3 paneles si hay referencia de cambio, si no 2)
     png = OUTPUT_DIR / f"quicklook_{tag}.png"
-    n = 3 if ref_db is not None else 2
+    # El panel de referencia necesita los dos: la imagen y su fecha. Van
+    # siempre juntos desde main(), pero la firma admite pasar uno solo, así
+    # que se comprueban juntos y no solo ref_db.
+    hay_ref = ref_db is not None and ref_item is not None
+    n = 3 if hay_ref else 2
     fig, ax = plt.subplots(1, n, figsize=(6 * n, 6))
-    if ref_db is not None:
+    if ref_db is not None and ref_item is not None:
         ax[0].imshow(ref_db.values, cmap="gray", vmin=-25, vmax=0)
         ax[0].set_title(f"Referencia VH — {ref_item.datetime:%Y-%m-%d}")
     ax[-2].imshow(vh_db.values, cmap="gray", vmin=-25, vmax=0)

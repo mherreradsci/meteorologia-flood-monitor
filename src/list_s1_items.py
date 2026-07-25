@@ -18,10 +18,10 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from flood_monitor import (DEFAULT_REGION, load_aoi, parse_end_date,
+from flood_monitor import (DEFAULT_REGION, EPOCH, load_aoi, parse_end_date,
                            stac_catalog)
 
 
@@ -83,8 +83,7 @@ def search_recent_s1_items(geom: dict, n: int, end: datetime,
     # Re-ordenamos también del lado del cliente como red de seguridad
     # barata (n es chico): si el servidor no respetara sortby, igual
     # obtenemos el orden correcto.
-    epoch = datetime.min.replace(tzinfo=timezone.utc)
-    items = sorted(search.items(), key=lambda it: it.datetime or epoch,
+    items = sorted(search.items(), key=lambda it: it.datetime or EPOCH,
                    reverse=True)
     if not items:
         end_desc = f"hasta {end:%Y-%m-%d}"
