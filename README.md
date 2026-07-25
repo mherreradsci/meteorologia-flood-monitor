@@ -1,5 +1,7 @@
 # Monitoreo de anegamiento casi en tiempo real (Sentinel-1)
 
+[![tests](https://github.com/mherreradsci/meteorologia-flood-monitor/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/mherreradsci/meteorologia-flood-monitor/actions/workflows/tests.yml)
+
 Detecta anegamiento con la banda VH de Sentinel-1 RTC (Microsoft Planetary
 Computer, sin cuenta ni API key), enmascara agua permanente con JRC Global
 Surface Water y genera GeoTIFF, GeoJSON, quicklook PNG y mapa HTML interactivo.
