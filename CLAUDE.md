@@ -47,7 +47,7 @@ correr desde `src/`, referenciarlos con `--aoi ../aoi/<archivo>.geojson`.
 
 ## Tests
 
-There is no linter or build step. There *is* a pytest suite en `tests/` (103
+There is no linter or build step. There *is* a pytest suite en `tests/` (106
 tests) que cubre todas las funciones de ambos scripts. **No** valida la
 calidad de la detección sobre imágenes reales (para eso, "verificación
 visual" más abajo).
@@ -215,9 +215,21 @@ driven by `main()`:
    enforcement) and uses CartoDB Voyager + a satellite layer instead.
 
 **Traceable output naming** (`build_run_tag`): every run's output files are
-tagged `<region>_<place>_<image-date>_<random-hex>_<local-timestamp>` (or
-`bbox_<coords>_...` when not using `--place`), so repeated runs — even
-reprocessing the same Sentinel-1 scene — never overwrite prior outputs.
+tagged `<region>_<place>_<image-date>_<random-hex>_<local-timestamp>`, so
+repeated runs — even reprocessing the same Sentinel-1 scene — never overwrite
+prior outputs. The `<region>_<place>` half depends on the input mode:
+
+| modo | prefijo del tag |
+|---|---|
+| `--place` | `<región>_<lugar>` (ambos por `slugify`) |
+| `--aoi` | `aoi_<nombre del geojson sin extensión>` |
+| `--bbox` | `bbox_<xmin>_<ymin>_<xmax>_<ymax>` (4 decimales) |
+
+Con `--aoi` se usa el nombre del archivo y no su envolvente porque dos
+polígonos distintos pueden compartir bbox, y porque los AOI de `aoi/` ya
+codifican país/región/comuna/localidad en el nombre — el resultado es
+`flood_mask_aoi_Chile-Region_de_Coquimbo-Punitaqui-Punitaqui_<...>.tif` en vez
+de una tira de coordenadas.
 
 ## Utilidades auxiliares
 

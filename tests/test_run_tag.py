@@ -8,6 +8,7 @@ saber, mirando solo el nombre, qué imagen produjo cada archivo.
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 import numpy as np
 
@@ -19,7 +20,8 @@ ESCENA = FakeItem(utc(2026, 7, 16, 10, 2, 47))
 
 
 def _args(**kw):
-    base = {"place": None, "region": "Región de Coquimbo, Chile"}
+    base = {"place": None, "aoi": None,
+            "region": "Región de Coquimbo, Chile"}
     return argparse.Namespace(**{**base, **kw})
 
 
@@ -40,10 +42,35 @@ def test_dos_corridas_de_la_misma_escena_no_se_pisan():
     assert "20260716T100247Z" in a and "20260716T100247Z" in b
 
 
-def test_sin_place_el_aoi_se_identifica_por_coordenadas():
+def test_con_bbox_el_aoi_se_identifica_por_coordenadas():
+    """Es el único modo sin ningún nombre asociado."""
     tag = build_run_tag(_args(), BBOX, ESCENA)
 
     assert tag.startswith("bbox_-71.5449_-30.3021_-71.4409_-30.2123_")
+
+
+def test_con_aoi_el_nombre_sale_del_geojson():
+    """El archivo ya nombra la zona; su envolvente no la distingue (dos
+    polígonos distintos pueden compartir bbox) y además es ilegible."""
+    ruta = Path("../aoi/Chile-Region_de_Coquimbo-La_huiguera-Chungungo.geojson")
+
+    tag = build_run_tag(_args(aoi=ruta), BBOX, ESCENA)
+
+    # Sin directorio ni extensión, y sin rastro de las coordenadas.
+    assert tag.startswith(
+        "aoi_Chile-Region_de_Coquimbo-La_huiguera-Chungungo_")
+    assert "20260716T100247Z" in tag
+    assert ".geojson" not in tag
+    assert "-71.5449" not in tag
+
+
+def test_el_nombre_del_aoi_se_normaliza_como_el_de_place():
+    """Un GeoJSON con espacios en el nombre no debe romper el archivo de
+    salida: pasa por el mismo slugify que --place."""
+    tag = build_run_tag(_args(aoi=Path("/data/Mi  Zona Norte.geojson")),
+                        BBOX, ESCENA)
+
+    assert tag.startswith("aoi_Mi_Zona_Norte_")
 
 
 def test_slugify_conserva_tildes_y_enie():

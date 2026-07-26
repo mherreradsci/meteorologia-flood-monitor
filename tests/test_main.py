@@ -13,6 +13,8 @@ vectorización y escritura.
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 
@@ -109,6 +111,26 @@ def correr(monkeypatch, *opciones):
     flood_monitor.main()
 
 
+def correr_con_aoi(monkeypatch, tmp_path, nombre):
+    """Igual que `correr`, pero entrando por --aoi: escribe un GeoJSON con
+    el bbox de la escena sintética y lo pasa por la CLI.
+
+    El archivo va a un subdirectorio para no mezclarse con las salidas, que
+    `salidas()` busca en la raíz de tmp_path.
+    """
+    xmin, ymin, xmax, ymax = bbox_lonlat(LADO, LADO)
+    carpeta = tmp_path / "aoi"
+    carpeta.mkdir(exist_ok=True)
+    ruta = carpeta / f"{nombre}.geojson"
+    ruta.write_text(json.dumps({
+        "type": "Polygon",
+        "coordinates": [[[xmin, ymin], [xmax, ymin], [xmax, ymax],
+                         [xmin, ymax], [xmin, ymin]]],
+    }))
+    monkeypatch.setattr("sys.argv", ["flood_monitor.py", "--aoi", str(ruta)])
+    flood_monitor.main()
+
+
 def espiar(monkeypatch, nombre):
     """Envuelve una etapa para registrar con qué la llamaron, sin
     reemplazarla: el pipeline sigue corriendo de verdad."""
@@ -143,6 +165,24 @@ def test_una_corrida_completa_escribe_las_salidas(pipeline, monkeypatch,
     # trazable una corrida histórica.
     assert "20260716T100247Z" in archivos[".tif"].name
     assert "[✓] Listo." in capsys.readouterr().out
+
+
+def test_con_aoi_los_archivos_llevan_el_nombre_del_geojson(
+        pipeline, monkeypatch, tmp_path):
+    """El nombre del AOI tiene que sobrevivir hasta el disco.
+
+    `build_run_tag` se prueba aparte, pero solo acá se ve que `args.aoi`
+    llega hasta él (con --bbox el mismo AOI produce coordenadas, así que un
+    cableado equivocado no rompería ninguna otra etapa).
+    """
+    pipeline()
+
+    correr_con_aoi(monkeypatch, tmp_path,
+                   "Chile-Region_de_Coquimbo-Tongoy-Playa")
+
+    tif = salidas(tmp_path)[".tif"].name
+    assert "aoi_Chile-Region_de_Coquimbo-Tongoy-Playa_" in tif
+    assert "20260716T100247Z" in tif
 
 
 def test_detecta_el_agua_y_no_el_suelo_seco(pipeline, monkeypatch, tmp_path):

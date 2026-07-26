@@ -17,7 +17,8 @@ Uso:
 
 Salidas (en ./output/), con sufijo de trazabilidad
 <region>_<place>_<fecha-imagen>_<secuencia>_<fecha-local> (no se pisan
-entre corridas):
+entre corridas). La zona se nombra según el modo de entrada: con --place,
+región y lugar; con --aoi, el nombre del GeoJSON; con --bbox, sus coordenadas:
     flood_mask_<tag>.tif      GeoTIFF binario (1 = anegado)
     flood_mask_<tag>.geojson  Polígonos vectorizados del anegamiento
     flood_map_<tag>.html      Mapa interactivo (abrir en navegador)
@@ -188,9 +189,15 @@ def build_run_tag(args: argparse.Namespace, bbox, item) -> str:
     if args.place:
         region = slugify(args.region)
         place = slugify(args.place)
+    elif args.aoi:
+        # El nombre del GeoJSON ya identifica la zona mejor que su envolvente
+        # (dos polígonos distintos pueden compartir bbox), y los del repo
+        # siguen la convención <País>-<Región>-<Comuna>-<Localidad>.
+        region = "aoi"
+        place = slugify(args.aoi.stem)
     else:
-        # Sin --place no hay nombre geocodificado: identificamos el AOI
-        # por sus coordenadas (bbox o --aoi resuelven a un bbox igual).
+        # Con --bbox no hay nombre alguno: identificamos el AOI por sus
+        # coordenadas.
         region = "bbox"
         place = "_".join(f"{v:.4f}" for v in bbox)
     img_ts = f"{item.datetime:%Y%m%dT%H%M%SZ}"

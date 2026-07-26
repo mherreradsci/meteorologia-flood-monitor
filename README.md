@@ -48,6 +48,19 @@ python flood_monitor.py --aoi mi_zona.geojson --days 15 --threshold -18
 Salidas en `./output/`: `flood_mask_*.tif`, `flood_mask_*.geojson`,
 `quicklook_*.png` y `flood_map_*.html` (abrir en el navegador).
 
+Cada archivo lleva un sufijo que identifica la corrida —zona, fecha de la
+imagen y timestamp local—, así que dos corridas nunca se pisan. Cómo se nombra
+la zona depende de cómo la pediste:
+
+| entrada | ejemplo de sufijo |
+|---|---|
+| `--place Tongoy` | `Región_de_Coquimbo,_Chile_Tongoy_20260724T232759Z_b5442c3e_20260726T011952` |
+| `--aoi ../aoi/Chile-Region_de_Coquimbo-Punitaqui-Punitaqui.geojson` | `aoi_Chile-Region_de_Coquimbo-Punitaqui-Punitaqui_20260724T232759Z_...` |
+| `--bbox -71.32 -30.85 -71.21 -30.80` | `bbox_-71.3200_-30.8500_-71.2100_-30.8000_20260724T232759Z_...` |
+
+Con `--aoi` el nombre sale del GeoJSON (sin ruta ni extensión): es más legible
+que sus coordenadas y distingue dos AOI que compartan envolvente.
+
 ## Tests
 
 ```bash
@@ -57,12 +70,13 @@ pytest -m "not network"  # todo lo que no necesita internet (~2 s)
 pytest -m raster         # solo los de GeoTIFF sintéticos
 ```
 
-103 tests. Cubren la resolución del AOI (los tres modos de entrada y el buffer
+106 tests. Cubren la resolución del AOI (los tres modos de entrada y el buffer
 del geocodificador), el parseo de fechas, la ventana de búsqueda, la lectura y
 conversión a dB, la detección (umbral de Otsu y su recorte, área mínima,
 criterio de cambio), las dos máscaras (ocurrencia JRC + dilatación, pendiente
 sobre el DEM), la escritura de salidas —incluida la reproyección del GeoJSON a
-EPSG:4326— y la selección de escena contra Planetary Computer.
+EPSG:4326 y el nombrado de los archivos en los tres modos— y la selección de
+escena contra Planetary Computer.
 
 **No** validan la calidad de la detección sobre imágenes reales: que el mapa
 sea correcto para tu zona se sigue viendo con el quicklook y comparando con
