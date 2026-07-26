@@ -37,9 +37,11 @@ python flood_monitor.py --aoi mi_zona.geojson
 python flood_monitor.py --aoi ../aoi/Chile-Region_de_Coquimbo-La_huiguera-Chungungo.geojson
 
 # Validar una fecha pasada: usa la última imagen anterior al corte, en vez
-# de la más reciente (útil para comparar contra otra fuente en esa fecha):
-python flood_monitor.py --place Tongoy --end-date 2025-03-14
-python flood_monitor.py --place Tongoy --end-date 2025-03-14 --days 15
+# de la más reciente (útil para comparar contra otra fuente en esa fecha).
+# El corte se interpreta en UTC salvo que agregues --local-time:
+python flood_monitor.py --place Tongoy --end-date-utc 2025-03-14
+python flood_monitor.py --place Tongoy --end-date-utc 2025-03-14 --days 15
+python flood_monitor.py --place Tongoy --end-date-utc 2025-03-14 --local-time
 
 # Opciones útiles:
 python flood_monitor.py --aoi mi_zona.geojson --days 15 --threshold -18
@@ -61,6 +63,55 @@ la zona depende de cómo la pediste:
 Con `--aoi` el nombre sale del GeoJSON (sin ruta ni extensión): es más legible
 que sus coordenadas y distingue dos AOI que compartan envolvente.
 
+## Zonas horarias: `--end-date-utc` y `--local-time`
+
+**Sentinel-1 fecha todo en UTC**, y este script también: todo lo que imprime y
+todo lo que le pide a la API está en UTC. Por eso el flag se llama
+`--end-date-utc`: el nombre dice en qué zona se interpreta lo que escribís.
+
+Con `--local-time`, la misma fecha se interpreta en la zona horaria **de la
+máquina donde corrés el script**. Ejemplo en Chile (`-04` en invierno):
+
+| comando | corte efectivo |
+|---|---|
+| `--end-date-utc 2026-07-16` | 2026-07-16 **23:59:59 UTC** (= 19:59 en Chile) |
+| `--end-date-utc 2026-07-16 --local-time` | 2026-07-16 23:59:59 en Chile (= **2026-07-17 03:59:59 UTC**) |
+| `--end-date-utc 2026-07-16T20:00:00-04:00` | 2026-07-17 00:00:00 UTC |
+
+Las reglas, en orden de prioridad:
+
+1. **Si la fecha trae offset explícito** (`2026-07-16T20:00:00-04:00`), manda
+   ese offset y `--local-time` se ignora. Ya dijiste en qué zona estabas.
+2. **Si no, y pasás `--local-time`**, se interpreta como hora local, aplicando
+   el horario de verano *vigente en esa fecha* — no el de hoy. En Chile, una
+   fecha de enero se resuelve con `-03` y una de julio con `-04`, aunque las
+   corras el mismo día.
+3. **Si no**, se interpreta como UTC. Es el comportamiento por defecto y el que
+   tenía el script desde siempre.
+
+Un `YYYY-MM-DD` pelado siempre resuelve al **final del día** (23:59:59) en la
+zona que corresponda, para que las escenas de esa misma fecha entren en la
+ventana.
+
+Con `--local-time` el script imprime la equivalencia, porque el corte suele
+caer en otro día UTC que el que escribiste:
+
+```
+[+] Corte local 2026-07-16 23:59:59 (-0400) = 2026-07-17 03:59:59 UTC
+```
+
+**¿Cuándo importa de verdad?** Cuando validás contra una app que muestra hora
+local. Sobre la Región de Coquimbo, Sentinel-1 pasa cerca de las 10:02 UTC
+(06:02 local) y de las 23:28 UTC (19:28 local). Esa segunda pasada cae dentro
+de las 4 horas que separan un corte de otro, así que `--local-time` puede
+cambiar qué escena se usa. `--local-time` **no** afecta el default (sin fecha,
+el corte es "ahora", que es el mismo instante en cualquier zona) — si lo pasás
+solo, el script te avisa que no hizo nada.
+
+> El flag anterior se llamaba `--end-date` y se sigue aceptando como alias, así
+> que los `crontab` existentes no se rompen. Interpretaba la fecha en UTC, o
+> sea que se comporta igual que `--end-date-utc`.
+
 ## Tests
 
 ```bash
@@ -70,8 +121,9 @@ pytest -m "not network"  # todo lo que no necesita internet (~2 s)
 pytest -m raster         # solo los de GeoTIFF sintéticos
 ```
 
-106 tests. Cubren la resolución del AOI (los tres modos de entrada y el buffer
-del geocodificador), el parseo de fechas, la ventana de búsqueda, la lectura y
+116 tests. Cubren la resolución del AOI (los tres modos de entrada y el buffer
+del geocodificador), el parseo de fechas —incluidas las dos zonas de
+`--local-time` y el horario de verano—, la ventana de búsqueda, la lectura y
 conversión a dB, la detección (umbral de Otsu y su recorte, área mínima,
 criterio de cambio), las dos máscaras (ocurrencia JRC + dilatación, pendiente
 sobre el DEM), la escritura de salidas —incluida la reproyección del GeoJSON a
@@ -101,11 +153,13 @@ crontab -e
   (default 5°; `--max-slope 0` la desactiva).
 - **Latencia real**: Sentinel-1 revisita cada ~2-6 días según la zona (con S-1A
   y S-1C operativos). El script informa cuántos días tiene la imagen usada.
-- **Fecha explícita**: `--end-date YYYY-MM-DD` corre el pipeline "como si fuera"
-  esa fecha: busca hacia atrás desde el corte (23:59:59 UTC de ese día) dentro
-  de la ventana de `--days`. Si no hay escena en esa ventana el script falla en
-  vez de traer una imagen lejana, para no validar contra una fecha equivocada:
+- **Fecha explícita**: `--end-date-utc YYYY-MM-DD` corre el pipeline "como si
+  fuera" esa fecha: busca hacia atrás desde el corte (23:59:59 UTC de ese día,
+  o hora local con `--local-time`; ver "Zonas horarias" arriba) dentro de la
+  ventana de `--days`. Si no hay escena en esa ventana el script falla en vez
+  de traer una imagen lejana, para no validar contra una fecha equivocada:
   subí `--days` o movéla. Para ver qué escenas hay disponibles antes de correr,
-  usá `list_s1_items.py --end-date ...`.
+  usá `list_s1_items.py --end-date-utc ...`, que acepta los mismos dos flags
+  con idéntica semántica.
 - **Validación**: comparar contra Copernicus Global Flood Monitoring (GFM):
   https://global-flood.emergency.copernicus.eu/

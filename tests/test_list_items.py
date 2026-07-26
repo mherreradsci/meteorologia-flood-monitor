@@ -103,7 +103,7 @@ def test_sin_resultados_corta_con_mensaje(fake_stac):
 # --------------------------------------------------------------------------- #
 def test_lista_numerada_desde_uno_con_id_y_fecha(capsys):
     """El número de orden es lo que se usa para elegir un item a mano y
-    pasárselo a flood_monitor como --end-date."""
+    pasárselo a flood_monitor como --end-date-utc."""
     items = [FakeItem(utc(2026, 7, 16, 10, 2, 47), "S1D_primera"),
              FakeItem(utc(2026, 7, 12, 23, 28, 23), "S1C_segunda")]
 

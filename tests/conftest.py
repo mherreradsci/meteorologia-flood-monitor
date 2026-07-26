@@ -6,6 +6,8 @@ en sys.path vía la opción `pythonpath` de pytest.ini.
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from shapely.geometry import box, mapping
 
@@ -14,6 +16,23 @@ from shapely.geometry import box, mapping
 # de Nominatim (una red menos, y sin rate limits ajenos al pipeline).
 TONGOY_BBOX = (-71.5449, -30.3021, -71.4409, -30.2123)
 TONGOY_GEOM = mapping(box(*TONGOY_BBOX))
+
+
+@pytest.fixture
+def en_santiago(monkeypatch):
+    """Corre el test con la máquina "puesta" en América/Santiago.
+
+    `--local-time` lee la zona del sistema, así que sin fijarla los tests
+    pasarían en Chile y fallarían en el runner de CI (que corre en UTC), o
+    al revés. Se eligió una zona con horario de verano a propósito: Chile es
+    -04 en invierno y -03 en verano, lo que permite verificar que se aplica
+    el offset vigente en la fecha pedida y no el de hoy.
+    """
+    monkeypatch.setenv("TZ", "America/Santiago")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
 
 
 @pytest.fixture

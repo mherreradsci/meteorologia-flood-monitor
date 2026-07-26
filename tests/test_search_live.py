@@ -6,7 +6,7 @@
 Son deterministas pese a consultar un servicio remoto: el archivo de
 Sentinel-1 es inmutable, así que "la última escena anterior al 2026-07-17
 sobre Tongoy" es la misma hoy que dentro de un año. Esa es justamente la
-propiedad que habilita --end-date: sin él, un test solo podría preguntar
+propiedad que habilita --end-date-utc: sin él, un test solo podría preguntar
 por "la más reciente", que cambia cada ~3 días.
 
 No descargan rasters (eso son cientos de MB): se quedan en la búsqueda.
@@ -23,7 +23,7 @@ from flood_monitor import (parse_end_date, search_latest_s1,
 pytestmark = pytest.mark.network
 
 # Escenas reales sobre el AOI de Tongoy, verificadas contra
-# `list_s1_items.py --place Tongoy --end-date 2026-07-17`.
+# `list_s1_items.py --place Tongoy --end-date-utc 2026-07-17`.
 ESCENA_16 = "S1D_IW_GRDH_1SDV_20260716T100235_20260716T100300_003697_0069D4_rtc"
 ESCENA_12 = "S1C_IW_GRDH_1SDV_20260712T232811_20260712T232835_008516_010DC6_rtc"
 ESCENA_10 = "S1C_IW_GRDH_1SDV_20260710T100242_20260710T100307_008479_010C90_rtc"

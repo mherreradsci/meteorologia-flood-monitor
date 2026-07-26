@@ -12,7 +12,8 @@ Uso:
     python flood_monitor.py --place Tongoy                # POI en Región de Coquimbo
     python flood_monitor.py --place Ovalle --buffer-km 8
     python flood_monitor.py --place "La Serena" --change  # cambio entre 2 fechas
-    python flood_monitor.py --place Tongoy --end-date 2025-03-14  # fecha pasada
+    python flood_monitor.py --place Tongoy --end-date-utc 2025-03-14  # fecha pasada
+    python flood_monitor.py --place Tongoy --end-date-utc 2025-03-14 --local-time
     python flood_monitor.py --bbox ... --days 12 --threshold -17.5
 
 Salidas (en ./output/), con sufijo de trazabilidad
@@ -70,11 +71,20 @@ def parse_args() -> argparse.Namespace:
                         "(default: 5)")
     p.add_argument("--days", type=int, default=10,
                    help="Buscar imágenes de los últimos N días (default: 10)")
-    p.add_argument("--end-date", type=str, default=None,
-                   help="Fecha de corte (YYYY-MM-DD o ISO 8601, UTC): usa la "
-                        "última imagen anterior a esa fecha en vez de la más "
-                        "reciente. Útil para validar contra una fecha "
-                        "concreta. Default: ahora")
+    # "--end-date" queda como alias por compatibilidad: era el nombre
+    # anterior y puede estar en crontabs. El nombre largo es el canónico
+    # porque la zona por defecto era justamente lo que se malentendía.
+    p.add_argument("--end-date-utc", "--end-date", type=str, default=None,
+                   dest="end_date_utc",
+                   help="Fecha de corte (YYYY-MM-DD o ISO 8601), interpretada "
+                        "en UTC: usa la última imagen anterior a esa fecha en "
+                        "vez de la más reciente. Útil para validar contra una "
+                        "fecha concreta. Default: ahora")
+    p.add_argument("--local-time", action="store_true",
+                   help="Interpreta --end-date-utc en la zona horaria local "
+                        "de esta máquina en vez de UTC (con YYYY-MM-DD, el "
+                        "corte es 23:59:59 hora local). Un offset explícito "
+                        "en la fecha tiene prioridad sobre este flag.")
     p.add_argument("--threshold", type=float, default=None,
                    help="Umbral fijo en dB para VH (ej: -18). "
                         "Si se omite, se calcula con Otsu.")
@@ -153,24 +163,45 @@ def load_aoi(args: argparse.Namespace):
     return mapping(geom), geom.bounds
 
 
-def parse_end_date(s: str | None) -> datetime:
-    """Parsea --end-date a datetime aware UTC. Sin --end-date, usa el
-    momento actual. Con solo fecha (YYYY-MM-DD), usa el final de ese día
-    (23:59:59 UTC) para incluir todas las imágenes de esa fecha.
+def parse_end_date(s: str | None, local: bool = False) -> datetime:
+    """Parsea --end-date-utc a datetime aware UTC. Sin fecha, usa el momento
+    actual. Con solo fecha (YYYY-MM-DD), usa el final de ese día (23:59:59)
+    para incluir todas las imágenes de esa fecha.
 
-    Compartida con list_s1_items.py (que la importa desde acá)."""
+    La zona en que se interpreta lo que escribió el usuario:
+
+    1. si el texto trae offset explícito ("...T20:00:00-04:00"), manda ese
+       offset y `local` se ignora;
+    2. si no, y `local` es True (--local-time), se interpreta como hora
+       local del sistema, con las reglas de horario de verano *de esa
+       fecha* (eso hace `.astimezone()` sobre un datetime naive);
+    3. si no, se interpreta como UTC, que es el default histórico.
+
+    El valor devuelto siempre es UTC: el rango STAC se formatea con sufijo
+    "Z", así que devolver hora local declararía como UTC un instante que no
+    lo es. Compartida con list_s1_items.py (que la importa desde acá)."""
     if s is None:
+        if local:
+            print("[!] --local-time no hace nada sin --end-date-utc: el "
+                  "default es el instante actual, que no depende de la zona.")
         return datetime.now(timezone.utc)
     if len(s) == 10:  # "YYYY-MM-DD"
-        return datetime.strptime(s, "%Y-%m-%d").replace(
-            hour=23, minute=59, second=59, tzinfo=timezone.utc)
-    dt = datetime.fromisoformat(s)
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    # Con offset explícito ("...T10:00:00-04:00") hay que convertir, no solo
-    # aceptar: el rango STAC se formatea con sufijo "Z", así que devolver la
-    # hora local declararía como UTC un instante que no lo es.
-    return dt.astimezone(timezone.utc)
+        dt = datetime.strptime(s, "%Y-%m-%d").replace(
+            hour=23, minute=59, second=59)
+    else:
+        dt = datetime.fromisoformat(s)
+    if dt.tzinfo is not None or local:
+        # Naive + local: astimezone() presume hora del sistema y aplica el
+        # offset vigente en esa fecha (en Chile, -03 en verano y -04 el
+        # resto del año), cosa que un offset fijo no haría.
+        end = dt.astimezone(timezone.utc)
+        if local and dt.tzinfo is None:
+            # El corte efectivo cae en otro día UTC que el que se escribió:
+            # imprimirlo evita la duda de contra qué se está comparando.
+            print(f"[+] Corte local {dt:%Y-%m-%d %H:%M:%S} "
+                  f"({dt.astimezone():%z}) = {end:%Y-%m-%d %H:%M:%S} UTC")
+        return end
+    return dt.replace(tzinfo=timezone.utc)
 
 
 def slugify(s: str) -> str:
@@ -230,13 +261,14 @@ def stac_catalog():
 def search_latest_s1(geom: dict, days: int, end: datetime):
     """Busca el item Sentinel-1 RTC más reciente anterior a `end` que
     intersecte el AOI, dentro de una ventana de `days` días hacia atrás.
-    Sin --end-date, `end` es "ahora" y equivale a la imagen más reciente."""
+    Sin --end-date-utc, `end` es "ahora" y equivale a la imagen más
+    reciente."""
     start = end - timedelta(days=days)
 
     search = stac_catalog().search(
         collections=["sentinel-1-rtc"],
         intersects=geom,
-        # Con hora, no solo fecha: --end-date YYYY-MM-DD resuelve a las
+        # Con hora, no solo fecha: --end-date-utc YYYY-MM-DD resuelve a las
         # 23:59:59 y así no se pierden las escenas de ese mismo día.
         datetime=f"{start:%Y-%m-%dT%H:%M:%SZ}/{end:%Y-%m-%dT%H:%M:%SZ}",
     )
@@ -245,7 +277,7 @@ def search_latest_s1(geom: dict, days: int, end: datetime):
     if not items:
         sys.exit(f"[!] No hay imágenes Sentinel-1 en los {days} días previos "
                  f"a {end:%Y-%m-%d} para ese AOI. Probá aumentar --days o "
-                 f"mover --end-date.")
+                 f"mover --end-date-utc.")
     item = items[0]
     item_dt = item.datetime
     if item_dt is None:
@@ -256,7 +288,8 @@ def search_latest_s1(geom: dict, days: int, end: datetime):
                  f"adquisición (la más nueva es {item.id}). No puedo usarla.")
     now = datetime.now(timezone.utc)
     age = f"hace {(now - item_dt).days} días"
-    # Con --end-date la antigüedad real no dice nada sobre la fecha pedida:
+    # Con --end-date-utc la antigüedad real no dice nada sobre la fecha
+    # pedida:
     # informamos además cuánto quedó la escena antes del corte.
     if (now - end).total_seconds() > 60:
         age += f", {(end - item_dt).days} días antes del corte"
@@ -535,7 +568,7 @@ def main() -> None:
     geom, bbox = load_aoi(args)
     print(f"[+] AOI bbox: {tuple(round(v, 4) for v in bbox)}")
 
-    end = parse_end_date(args.end_date)
+    end = parse_end_date(args.end_date_utc, args.local_time)
     item = search_latest_s1(geom, args.days, end)
     vh_db = read_vh_db(item, bbox)
 

@@ -9,7 +9,7 @@ manualmente o depurar coberturas).
 
 Uso:
     python list_s1_items.py --place Tongoy
-    python list_s1_items.py --place Ovalle --end-date 2025-01-15 -n 5
+    python list_s1_items.py --place Ovalle --end-date-utc 2025-01-15 -n 5
     python list_s1_items.py --bbox -71.3 -29.95 -71.1 -29.8 --days-back 60
     python list_s1_items.py --aoi mi_zona.geojson -n 3
 """
@@ -47,12 +47,22 @@ def parse_args() -> argparse.Namespace:
                          "(default: 5)")
     p.add_argument("-n", "--num-items", type=int, default=10,
                     help="Cantidad de items a listar (default: 10)")
-    p.add_argument("--end-date", type=str, default=None,
+    # Mismos nombres y semántica que flood_monitor.py (comparten
+    # parse_end_date): elegir una fecha con este script y pasársela al otro
+    # tiene que dar el mismo corte. "--end-date" queda como alias por
+    # compatibilidad.
+    p.add_argument("--end-date-utc", "--end-date", type=str, default=None,
+                    dest="end_date_utc",
                     help="Fecha de fin (YYYY-MM-DD o ISO 8601) desde la "
-                         "cual buscar hacia atrás, UTC. Default: ahora")
+                         "cual buscar hacia atrás, interpretada en UTC. "
+                         "Default: ahora")
+    p.add_argument("--local-time", action="store_true",
+                    help="Interpreta --end-date-utc en la zona horaria local "
+                         "de esta máquina en vez de UTC. Un offset explícito "
+                         "en la fecha tiene prioridad sobre este flag.")
     p.add_argument("--days-back", type=int, default=None,
                     help="Opcional: acota la búsqueda a los N días previos "
-                         "a --end-date. Default: sin límite (todo el "
+                         "a --end-date-utc. Default: sin límite (todo el "
                          "archivo)")
     return p.parse_args()
 
@@ -114,7 +124,7 @@ def main() -> None:
     args = parse_args()
     geom, bbox = load_aoi(args)
     print(f"[+] AOI bbox: {tuple(round(v, 4) for v in bbox)}")
-    end = parse_end_date(args.end_date)
+    end = parse_end_date(args.end_date_utc, args.local_time)
     items = search_recent_s1_items(geom, args.num_items, end, args.days_back)
     print_items(items, end)
 

@@ -79,7 +79,7 @@ def test_ventana_vacia_falla_con_mensaje_util(fake_stac):
     msg = str(exc.value)
     assert "1 días previos" in msg
     assert "2026-07-17" in msg
-    assert "--days" in msg and "--end-date" in msg
+    assert "--days" in msg and "--end-date-utc" in msg
 
 
 def test_la_referencia_se_ancla_en_la_escena_no_en_el_reloj(fake_stac):
@@ -87,7 +87,7 @@ def test_la_referencia_se_ancla_en_la_escena_no_en_el_reloj(fake_stac):
 
     `search_reference_s1` deriva su ventana del datetime del item elegido,
     así que al procesar una fecha histórica la referencia también es
-    histórica — sin que --end-date tenga que pasarle nada.
+    histórica — sin que --end-date-utc tenga que pasarle nada.
     """
     actual = FakeItem(utc(2026, 7, 16, 10, 2), orbit=156, state="descending")
     ref = FakeItem(utc(2026, 7, 10, 10, 2), "S1C_ref")

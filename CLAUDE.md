@@ -37,7 +37,8 @@ python flood_monitor.py --place "La Serena" --change          # two-date change 
 python flood_monitor.py --bbox -58.65 -34.75 -58.30 -34.45     # xmin ymin xmax ymax, lon/lat
 python flood_monitor.py --aoi mi_zona.geojson
 python flood_monitor.py --aoi mi_zona.geojson --days 15 --threshold -18
-python flood_monitor.py --place Tongoy --end-date 2025-03-14   # fecha pasada
+python flood_monitor.py --place Tongoy --end-date-utc 2025-03-14              # corte en UTC
+python flood_monitor.py --place Tongoy --end-date-utc 2025-03-14 --local-time # corte en hora local
 ```
 
 `aoi/` (raíz del repo) guarda GeoJSON de referencia reutilizables como ejemplo
@@ -47,7 +48,7 @@ correr desde `src/`, referenciarlos con `--aoi ../aoi/<archivo>.geojson`.
 
 ## Tests
 
-There is no linter or build step. There *is* a pytest suite en `tests/` (106
+There is no linter or build step. There *is* a pytest suite en `tests/` (116
 tests) que cubre todas las funciones de ambos scripts. **No** valida la
 calidad de la detección sobre imágenes reales (para eso, "verificación
 visual" más abajo).
@@ -66,7 +67,13 @@ importan `flood_monitor` / `list_s1_items` por nombre igual que entre sí, y
 `pytest` se corre desde la raíz del repo (no desde `src/`).
 
 - `test_end_date.py`, `test_run_tag.py` — funciones puras (parseo de fechas,
-  slug/tag de salida, conversión a dB).
+  slug/tag de salida, conversión a dB). Los de `--local-time` usan la fixture
+  `en_santiago` (en `conftest.py`), que fija `TZ=America/Santiago` +
+  `time.tzset()`: sin eso pasarían en Chile y fallarían en CI, que corre en
+  UTC. La zona se eligió porque tiene horario de verano, así que el mismo
+  test cubre que se aplique el offset de la fecha pedida (`-03` en enero,
+  `-04` en julio) y no el de hoy. Verificado corriendo la suite entera bajo
+  `TZ=UTC`, `TZ=America/Santiago` y `TZ=Asia/Tokyo`.
 - `test_aoi.py` — `load_aoi` y `geocode_place`. Es la primera etapa y la que
   ningún otro test vigila: con el AOI equivocado, todo lo demás sigue en verde
   y el mapa sale bien calculado del lugar equivocado. Cubre las tres
@@ -126,7 +133,7 @@ importan `flood_monitor` / `list_s1_items` por nombre igual que entre sí, y
   aparecen en los asserts son reconocibles.
 - `test_search_live.py` — marcado `network`. Es determinista pese a pegarle a
   un servicio remoto porque el archivo Sentinel-1 es **inmutable**: las
-  aserciones se anclan en cortes históricos (`--end-date 2026-07-17` sobre
+  aserciones se anclan en cortes históricos (`--end-date-utc 2026-07-17` sobre
   Tongoy siempre devuelve la misma escena). Nunca afirmar sobre "la más
   reciente" en un test: eso cambia cada ~3 días. No descarga rasters.
 
@@ -175,15 +182,16 @@ driven by `main()`:
    ~100 km wide).
 2. **Image search** (`search_latest_s1`, `search_reference_s1`) — queries the
    `sentinel-1-rtc` STAC collection. The search window is `[end - --days, end]`,
-   where `end` comes from `parse_end_date(--end-date)` and defaults to *now* —
-   so `--end-date` reruns the whole pipeline "as of" a past date (for validating
-   against another source on a specific day). A bare `YYYY-MM-DD` resolves to
-   23:59:59 UTC so that day's own acquisitions are included. If no scene falls
-   in the window the script exits rather than silently reaching further back;
-   this is deliberate, so a validation run never compares against a scene weeks
-   away from the requested date. Reference-image search (for `--change`)
-   anchors on the *chosen* item's datetime, so it follows `--end-date` back
-   automatically, and filters on `sat:relative_orbit` + `sat:orbit_state` so the two acquisitions
+   where `end` comes from `parse_end_date(--end-date-utc, --local-time)` and
+   defaults to *now* — so `--end-date-utc` reruns the whole pipeline "as of" a
+   past date (for validating against another source on a specific day). A bare
+   `YYYY-MM-DD` resolves to 23:59:59 so that day's own acquisitions are
+   included. If no scene falls in the window the script exits rather than
+   silently reaching further back; this is deliberate, so a validation run
+   never compares against a scene weeks away from the requested date.
+   Reference-image search (for `--change`) anchors on the *chosen* item's
+   datetime, so it follows `--end-date-utc` back automatically, and filters on
+   `sat:relative_orbit` + `sat:orbit_state` so the two acquisitions
    share geometry, and requires ≥6 days separation (S1 minimum revisit).
 3. **Read + convert** (`read_vh_db`) — clips the VH asset to bbox, converts
    linear power to dB (`to_db`), treating `DB_NODATA = -9999.0` as the
@@ -214,6 +222,33 @@ driven by `main()`:
    skips the OSM raster basemap (it 403s on `file://` due to `Referer`
    enforcement) and uses CartoDB Voyager + a satellite layer instead.
 
+**Zonas horarias** (`parse_end_date`): el pipeline trabaja **siempre en UTC**
+—el rango STAC se formatea con sufijo `Z` y todo lo que se imprime lleva la
+etiqueta UTC—, así que la función devuelve un datetime *aware* en UTC sin
+excepción. Lo único configurable es cómo se **interpreta** el texto que
+escribió el usuario, y el orden de prioridad es:
+
+| entrada | zona con que se interpreta |
+|---|---|
+| offset explícito (`...T20:00:00-04:00`) | el offset dado; `--local-time` se ignora |
+| naive + `--local-time` | zona del sistema, con el DST **de esa fecha** |
+| naive sin flag | UTC (default histórico) |
+
+El nombre del flag (`--end-date-utc`, antes `--end-date`) marca el default;
+`--end-date` sigue siendo un alias de argparse para no romper crontabs.
+
+La rama local usa `dt.astimezone(timezone.utc)` sobre un datetime **naive**,
+no `dt.replace(tzinfo=<offset de hoy>)`. La diferencia importa en zonas con
+horario de verano: `.astimezone()` sobre un naive presume hora del sistema y
+consulta las reglas para *ese* instante, así que en Chile una fecha de enero
+sale `-03` y una de julio `-04` aunque las corras el mismo día. Con un offset
+fijo tomado de `datetime.now()`, una de las dos quedaría corrida una hora.
+
+Sin fecha, `--local-time` no hace nada (el default es "ahora", el mismo
+instante en toda zona) y el script lo avisa en vez de callarse. Con fecha
+local sí imprime la equivalencia, porque el corte cae seguido en otro día UTC
+que el pedido.
+
 **Traceable output naming** (`build_run_tag`): every run's output files are
 tagged `<region>_<place>_<image-date>_<random-hex>_<local-timestamp>`, so
 repeated runs — even reprocessing the same Sentinel-1 scene — never overwrite
@@ -235,14 +270,17 @@ de una tira de coordenadas.
 
 `src/list_s1_items.py` es un script hermano, de solo lectura, que lista los
 N items Sentinel-1 RTC más recientes que intersectan un AOI, buscando hacia
-atrás desde una fecha de fin (`--end-date`, default "ahora"). Reutiliza
+atrás desde una fecha de fin (`--end-date-utc`, default "ahora"). Reutiliza
 `load_aoi`/`geocode_place`/`stac_catalog`/`DEFAULT_REGION` de
 `flood_monitor.py` vía import directo (mismo directorio, sin paquete), y
 comparte la misma convención de AOI (`--aoi`/`--bbox`/`--place`). También
 importa de ahí `parse_end_date` y `EPOCH`, que viven en `flood_monitor.py`
-porque ambos scripts aceptan `--end-date` con idéntica semántica y ordenan
-items STAC igual (el import va siempre en esa dirección: `list_s1_items` →
-`flood_monitor`, nunca al revés).
+porque ambos scripts aceptan `--end-date-utc` y `--local-time` con idéntica
+semántica y ordenan items STAC igual (el import va siempre en esa dirección:
+`list_s1_items` → `flood_monitor`, nunca al revés). Esa paridad es el punto:
+el flujo normal es elegir una escena con el listado y pasarle esa misma fecha
+al pipeline, así que si los dos flags divergieran, el corte también. Un test
+parametrizado en `test_cli.py` los compara en los dos scripts.
 
 `EPOCH` existe porque STAC permite `datetime: null` (items que declaran
 start/end_datetime en su lugar): ordenar por ese campo sin protección compara
@@ -260,7 +298,7 @@ tener que adivinar cuántos días hacia atrás mirar.
 ```bash
 cd src
 python list_s1_items.py --place Tongoy
-python list_s1_items.py --place Ovalle --end-date 2025-01-15 -n 5
+python list_s1_items.py --place Ovalle --end-date-utc 2025-01-15 -n 5
 python list_s1_items.py --bbox -71.3 -29.95 -71.1 -29.8 --days-back 60
 python list_s1_items.py --aoi ../aoi/Chile-Region_de_Coquimbo-La_huiguera-Chungungo.geojson
 ```

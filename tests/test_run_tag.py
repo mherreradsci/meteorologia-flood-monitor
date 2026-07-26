@@ -1,6 +1,6 @@
 """Trazabilidad del nombre de salida y conversión a dB. Sin red.
 
-Con --end-date se acumulan corridas de distintas fechas en el mismo
+Con --end-date-utc se acumulan corridas de distintas fechas en el mismo
 `output/`: que el tag lleve el timestamp de la escena es lo que permite
 saber, mirando solo el nombre, qué imagen produjo cada archivo.
 """

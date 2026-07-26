@@ -57,17 +57,44 @@ def test_los_defaults_son_los_documentados(monkeypatch):
     # Sin valor, ambos caen a su comportamiento automático: Otsu para el
     # umbral, "ahora" para el corte.
     assert a.threshold is None
-    assert a.end_date is None
+    assert a.end_date_utc is None
+    assert a.local_time is False   # el corte se interpreta en UTC
     assert a.change is False
 
 
 def test_end_date_llega_como_texto_sin_parsear(monkeypatch):
     """argparse solo transporta; el parseo es de parse_end_date, que sabe de
     zonas horarias y del final del día."""
-    a = parsear(["--place", "Tongoy", "--end-date", "2026-07-16"],
+    a = parsear(["--place", "Tongoy", "--end-date-utc", "2026-07-16"],
                 flood_monitor, monkeypatch)
 
-    assert a.end_date == "2026-07-16"
+    assert a.end_date_utc == "2026-07-16"
+    assert a.local_time is False
+
+
+@pytest.mark.parametrize("modulo", [flood_monitor, list_s1_items],
+                         ids=["flood_monitor", "list_s1_items"])
+def test_end_date_sigue_aceptando_el_nombre_viejo(modulo, monkeypatch):
+    """`--end-date` era el nombre original y puede estar en un crontab.
+
+    Sigue siendo un alias del mismo destino, en los dos scripts: renombrar
+    un flag documentado no debería romper una automatización existente.
+    """
+    a = parsear(["--place", "Tongoy", "--end-date", "2026-07-16"],
+                modulo, monkeypatch)
+
+    assert a.end_date_utc == "2026-07-16"
+
+
+@pytest.mark.parametrize("modulo", [flood_monitor, list_s1_items],
+                         ids=["flood_monitor", "list_s1_items"])
+def test_local_time_es_un_flag_sin_valor(modulo, monkeypatch):
+    """Los dos scripts tienen que ofrecerlo igual: elegir una fecha con el
+    listado y pasársela al otro debe dar el mismo corte."""
+    a = parsear(["--place", "Tongoy", "--end-date-utc", "2026-07-16",
+                 "--local-time"], modulo, monkeypatch)
+
+    assert a.local_time is True
 
 
 def test_los_numericos_aceptan_negativos(monkeypatch):
@@ -84,6 +111,7 @@ def test_defaults_del_script_hermano(monkeypatch):
     a = parsear(["--place", "Tongoy"], list_s1_items, monkeypatch)
 
     assert a.num_items == 10
-    assert a.end_date is None
+    assert a.end_date_utc is None
+    assert a.local_time is False
     assert a.days_back is None   # sin límite: todo el archivo
     assert a.region == flood_monitor.DEFAULT_REGION

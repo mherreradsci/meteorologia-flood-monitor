@@ -232,11 +232,30 @@ def test_end_date_se_traduce_a_la_fecha_de_corte(pipeline, monkeypatch):
     pipeline()
     busqueda = espiar(monkeypatch, "search_latest_s1")
 
-    correr(monkeypatch, "--end-date", "2026-07-17")
+    correr(monkeypatch, "--end-date-utc", "2026-07-17")
 
     corte = busqueda["args"][2]
     assert (corte.year, corte.month, corte.day) == (2026, 7, 17)
     assert (corte.hour, corte.minute, corte.second) == (23, 59, 59)
+
+
+def test_local_time_llega_hasta_la_ventana_de_busqueda(pipeline, monkeypatch,
+                                                       en_santiago):
+    """El flag no sirve de nada si no viaja junto a la fecha.
+
+    `parse_end_date` ya se prueba con las dos zonas, pero solo acá se ve que
+    `--local-time` llegó a esa llamada: si se perdiera, el corte seguiría
+    siendo válido —solo que 4 horas antes— y ningún otro test lo notaría.
+    """
+    pipeline()
+    busqueda = espiar(monkeypatch, "search_latest_s1")
+
+    correr(monkeypatch, "--end-date-utc", "2026-07-17", "--local-time")
+
+    # Fin del 17 en Santiago (-04 en julio) = 03:59:59 UTC del 18.
+    corte = busqueda["args"][2]
+    assert (corte.year, corte.month, corte.day) == (2026, 7, 18)
+    assert (corte.hour, corte.minute, corte.second) == (3, 59, 59)
 
 
 # --------------------------------------------------------------------------- #
@@ -323,7 +342,7 @@ def test_main_del_listado_imprime_las_escenas(monkeypatch, capsys, fake_stac):
     xmin, ymin, xmax, ymax = bbox_lonlat(LADO, LADO)
     monkeypatch.setattr("sys.argv", ["list_s1_items.py", "--bbox", str(xmin),
                                      str(ymin), str(xmax), str(ymax),
-                                     "-n", "3", "--end-date", "2026-07-17"])
+                                     "-n", "3", "--end-date-utc", "2026-07-17"])
 
     list_s1_items.main()
 
