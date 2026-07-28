@@ -52,7 +52,7 @@ def test_iso_con_offset_se_convierte_a_utc():
     """Un offset explícito debe convertirse, no solo aceptarse.
 
     El rango STAC se formatea con sufijo "Z"; devolver la hora local
-    declararía como UTC un instante corrido por el offset (acá, 4 h).
+    declararía como UTC un instante corrido por el offset (aquí, 4 h).
     """
     t = parse_end_date("2026-07-13T06:30:00-04:00")
     assert t == datetime(2026, 7, 13, 10, 30, tzinfo=timezone.utc)

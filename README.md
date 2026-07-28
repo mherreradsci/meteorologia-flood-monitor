@@ -18,12 +18,12 @@ pip install -r requirements.txt
 
 ```bash
 # Con un punto de interés por nombre (por defecto busca en la Región de
-# Coquimbo, Chile; cambiá el contexto con --region):
+# Coquimbo, Chile; cambia el contexto con --region):
 python flood_monitor.py --place Tongoy
 python flood_monitor.py --place Ovalle --buffer-km 8
 python flood_monitor.py --place "Quilpué" --region "Región de Valparaíso, Chile"
 
-# En zonas urbanas o agrícolas, activá la detección de cambio entre dos
+# En zonas urbanas o agrícolas, activa la detección de cambio entre dos
 # fechas (elimina falsos positivos de parcelas lisas, pavimento y sombras):
 python flood_monitor.py --place "La Serena" --change
 
@@ -67,10 +67,10 @@ que sus coordenadas y distingue dos AOI que compartan envolvente.
 
 **Sentinel-1 fecha todo en UTC**, y este script también: todo lo que imprime y
 todo lo que le pide a la API está en UTC. Por eso el flag se llama
-`--end-date-utc`: el nombre dice en qué zona se interpreta lo que escribís.
+`--end-date-utc`: el nombre dice en qué zona se interpreta lo que escribes.
 
 Con `--local-time`, la misma fecha se interpreta en la zona horaria **de la
-máquina donde corrés el script**. Ejemplo en Chile (`-04` en invierno):
+máquina donde corres el script**. Ejemplo en Chile (`-04` en invierno):
 
 | comando | corte efectivo |
 |---|---|
@@ -82,7 +82,7 @@ Las reglas, en orden de prioridad:
 
 1. **Si la fecha trae offset explícito** (`2026-07-16T20:00:00-04:00`), manda
    ese offset y `--local-time` se ignora. Ya dijiste en qué zona estabas.
-2. **Si no, y pasás `--local-time`**, se interpreta como hora local, aplicando
+2. **Si no, y pasas `--local-time`**, se interpreta como hora local, aplicando
    el horario de verano *vigente en esa fecha* — no el de hoy. En Chile, una
    fecha de enero se resuelve con `-03` y una de julio con `-04`, aunque las
    corras el mismo día.
@@ -100,12 +100,12 @@ caer en otro día UTC que el que escribiste:
 [+] Corte local 2026-07-16 23:59:59 (-0400) = 2026-07-17 03:59:59 UTC
 ```
 
-**¿Cuándo importa de verdad?** Cuando validás contra una app que muestra hora
+**¿Cuándo importa de verdad?** Cuando validas contra una app que muestra hora
 local. Sobre la Región de Coquimbo, Sentinel-1 pasa cerca de las 10:02 UTC
 (06:02 local) y de las 23:28 UTC (19:28 local). Esa segunda pasada cae dentro
 de las 4 horas que separan un corte de otro, así que `--local-time` puede
 cambiar qué escena se usa. `--local-time` **no** afecta el default (sin fecha,
-el corte es "ahora", que es el mismo instante en cualquier zona) — si lo pasás
+el corte es "ahora", que es el mismo instante en cualquier zona) — si lo pasas
 solo, el script te avisa que no hizo nada.
 
 > El flag anterior se llamaba `--end-date` y se sigue aceptando como alias, así
@@ -145,8 +145,8 @@ crontab -e
 ## Notas de calibración
 
 - **Umbral**: por defecto usa Otsu (automático, acotado a [-25, -14] dB).
-  Si tu zona tiene poca agua, Otsu puede fallar: fijá `--threshold -18` y
-  ajustá comparando el quicklook con el terreno que conocés.
+  Si tu zona tiene poca agua, Otsu puede fallar: fija `--threshold -18` y
+  ajusta comparando el quicklook con el terreno que conoces.
 - **Falsos positivos** típicos: sombras de relieve, asfalto/pistas, suelo muy
   liso y seco. El filtro `--min-area-px` ayuda, y la máscara de pendiente
   (Copernicus DEM GLO-30) descarta terreno con más de `--max-slope` grados
@@ -158,8 +158,8 @@ crontab -e
   o hora local con `--local-time`; ver "Zonas horarias" arriba) dentro de la
   ventana de `--days`. Si no hay escena en esa ventana el script falla en vez
   de traer una imagen lejana, para no validar contra una fecha equivocada:
-  subí `--days` o movéla. Para ver qué escenas hay disponibles antes de correr,
-  usá `list_s1_items.py --end-date-utc ...`, que acepta los mismos dos flags
+  sube `--days` o muévela. Para ver qué escenas hay disponibles antes de correr,
+  usa `list_s1_items.py --end-date-utc ...`, que acepta los mismos dos flags
   con idéntica semántica.
 - **Validación**: comparar contra Copernicus Global Flood Monitoring (GFM):
   https://global-flood.emergency.copernicus.eu/

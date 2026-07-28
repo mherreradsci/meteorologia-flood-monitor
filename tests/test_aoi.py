@@ -74,10 +74,10 @@ def test_las_tres_formas_de_geojson_dan_lo_mismo(tmp_path):
 
 
 def test_una_coleccion_de_varios_features_usa_solo_el_primero(tmp_path):
-    """Limitación conocida, acá documentada: `features[0]` y el resto se
+    """Limitación conocida, aquí documentada: `features[0]` y el resto se
     descarta en silencio.
 
-    Si dibujás dos polígonos en geojson.io, el segundo no se procesa y nada
+    Si dibujas dos polígonos en geojson.io, el segundo no se procesa y nada
     lo avisa. Los ejemplos de `aoi/` tienen un solo feature, así que hoy no
     molesta; este test está para que el día que cambie sea una decisión y no
     una sorpresa.
@@ -103,7 +103,7 @@ def test_los_aoi_de_ejemplo_del_repo_cargan(ruta):
     corrompe o cambia de formato, esto lo caza.
 
     El bbox tiene que caer dentro de Chile continental; un archivo con las
-    coordenadas invertidas (lat, lon) se iría al Índico y fallaría acá.
+    coordenadas invertidas (lat, lon) se iría al Índico y fallaría aquí.
     """
     geom, bbox = load_aoi(args(aoi=ruta))
 

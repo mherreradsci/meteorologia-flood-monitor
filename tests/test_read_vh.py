@@ -1,6 +1,6 @@
 """`read_vh_db`: de potencia lineal a decibelios. Sin red, con GDAL.
 
-`to_db` ya se prueba aislada en test_detection.py; acá se verifica el cableado
+`to_db` ya se prueba aislada en test_detection.py; aquí se verifica el cableado
 completo sobre un GeoTIFF real: recorte, colapso de la banda, conversión y
 tratamiento de los píxeles inválidos. Si esta función devolviera potencia
 lineal en vez de dB, todos los umbrales del pipeline (que hablan en dB)

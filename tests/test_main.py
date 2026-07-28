@@ -1,6 +1,6 @@
 """`main()`: el pegamento, ejercitado de punta a punta. Sin red, con GDAL.
 
-Cada etapa ya tiene sus tests aislados; lo que acá se verifica es el cableado
+Cada etapa ya tiene sus tests aislados; lo que aquí se verifica es el cableado
 entre ellas, que es lo único que ningún otro test puede ver: que el valor de
 cada opción de la CLI llegue a la función que corresponde, y que las ramas de
 `--change` hagan lo que dicen.
@@ -171,7 +171,7 @@ def test_con_aoi_los_archivos_llevan_el_nombre_del_geojson(
         pipeline, monkeypatch, tmp_path):
     """El nombre del AOI tiene que sobrevivir hasta el disco.
 
-    `build_run_tag` se prueba aparte, pero solo acá se ve que `args.aoi`
+    `build_run_tag` se prueba aparte, pero solo aquí se ve que `args.aoi`
     llega hasta él (con --bbox el mismo AOI produce coordenadas, así que un
     cableado equivocado no rompería ninguna otra etapa).
     """
@@ -243,7 +243,7 @@ def test_local_time_llega_hasta_la_ventana_de_busqueda(pipeline, monkeypatch,
                                                        en_santiago):
     """El flag no sirve de nada si no viaja junto a la fecha.
 
-    `parse_end_date` ya se prueba con las dos zonas, pero solo acá se ve que
+    `parse_end_date` ya se prueba con las dos zonas, pero solo aquí se ve que
     `--local-time` llegó a esa llamada: si se perdiera, el corte seguiría
     siendo válido —solo que 4 horas antes— y ningún otro test lo notaría.
     """

@@ -135,7 +135,7 @@ def geocode_place(place: str, region: str, buffer_km: float):
     results = r.json()
     if not results:
         sys.exit(f"[!] Nominatim no encontró '{place}' en '{region}'. "
-                 f"Probá otro nombre o ajustá --region.")
+                 f"Prueba otro nombre o ajusta --region.")
     res = results[0]
     print(f"[+] POI geocodificado: {res['display_name']}")
     # Usamos el centro del resultado, no su boundingbox: para comunas
@@ -189,7 +189,7 @@ def parse_end_date(s: str | None, local: bool = False) -> datetime:
 
     El valor devuelto siempre es UTC: el rango STAC se formatea con sufijo
     "Z", así que devolver hora local declararía como UTC un instante que no
-    lo es. Compartida con list_s1_items.py (que la importa desde acá)."""
+    lo es. Compartida con list_s1_items.py (que la importa desde aquí)."""
     if s is None:
         if local:
             print("[!] --local-time no hace nada sin --end-date-utc: el "
@@ -286,13 +286,13 @@ def search_latest_s1(geom: dict, days: int, end: datetime):
                    key=lambda it: it.datetime or EPOCH, reverse=True)
     if not items:
         sys.exit(f"[!] No hay imágenes Sentinel-1 en los {days} días previos "
-                 f"a {end:%Y-%m-%d} para ese AOI. Probá aumentar --days o "
+                 f"a {end:%Y-%m-%d} para ese AOI. Prueba aumentar --days o "
                  f"mover --end-date-utc.")
     item = items[0]
     item_dt = item.datetime
     if item_dt is None:
         # Los items sin fecha quedan al fondo del orden (EPOCH), así que
-        # llegar acá significa que ninguno la trae. Sin fecha no hay forma
+        # llegar aquí significa que ninguno la trae. Sin fecha no hay forma
         # de informar la antigüedad ni de etiquetar la salida.
         sys.exit(f"[!] Ninguna imagen en la ventana declara fecha de "
                  f"adquisición (la más nueva es {item.id}). No puedo usarla.")
@@ -570,7 +570,7 @@ def save_outputs(vh_db, flood: np.ndarray, item, bbox, tag: str,
             print(f"[+] Mapa interactivo: {html}")
         except Exception as e:  # noqa: BLE001
             print(f"[!] No pude generar el mapa HTML ({e}). "
-                  f"Usá el GeoJSON en QGIS/geojson.io.")
+                  f"Usa el GeoJSON en QGIS/geojson.io.")
 
 
 def main() -> None:
@@ -587,7 +587,7 @@ def main() -> None:
         ref_item = search_reference_s1(geom, item, args.ref_days)
         if ref_item is None:
             print(f"[!] Sin referencia de la misma órbita en los {args.ref_days} "
-                  f"días previos. Sigo solo con umbral (probá subir --ref-days).")
+                  f"días previos. Sigo solo con umbral (prueba subir --ref-days).")
         else:
             from rasterio.enums import Resampling
 

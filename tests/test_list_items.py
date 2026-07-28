@@ -75,7 +75,7 @@ def test_un_item_sin_fecha_no_rompe_el_orden(fake_stac):
     """Mismo caso que en flood_monitor: STAC admite `datetime: null`.
 
     Ambos scripts comparten la constante EPOCH justamente para tratarlo
-    igual; acá se verifica del lado del hermano.
+    igual; aquí se verifica del lado del hermano.
     """
     sin_fecha = FakeItem(utc(2026, 7, 20), "sin_fecha")
     sin_fecha.datetime = None

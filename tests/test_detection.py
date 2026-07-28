@@ -1,7 +1,7 @@
 """El núcleo de la decisión: qué píxel cuenta como anegado. Sin red.
 
 `water_threshold` y `detect_flood` son las dos funciones que deciden el
-resultado del mapa. Un error acá no rompe la corrida: produce un mapa
+resultado del mapa. Un error aquí no rompe la corrida: produce un mapa
 verosímil pero equivocado, que es el modo de falla más difícil de ver a ojo.
 
 Solo necesitan numpy y scikit-image (nada de GDAL): operan sobre `.values`,

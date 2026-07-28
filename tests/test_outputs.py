@@ -1,6 +1,6 @@
 """`save_outputs`: los archivos que se lleva el usuario. Sin red, con GDAL.
 
-Lo importante acá es la única transformación de coordenadas del pipeline: la
+Lo importante aquí es la única transformación de coordenadas del pipeline: la
 máscara se calcula en UTM y el GeoJSON se escribe en EPSG:4326. Si esa
 reproyección estuviera mal, los polígonos caerían lejos del AOI y el resto de
 la suite seguiría en verde — el mapa "funciona", solo que del lugar

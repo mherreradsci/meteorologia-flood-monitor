@@ -84,7 +84,7 @@ importan `flood_monitor` / `list_s1_items` por nombre igual que entre sí, y
   documentación que CI protege.
 - `test_cli.py` — contrato de `parse_args` en los dos scripts: exclusividad
   mutua de `--aoi/--bbox/--place` y los defaults que documentan README y este
-  archivo (si cambian acá, el test avisa).
+  archivo (si cambian aquí, el test avisa).
 - `test_list_items.py` — `search_recent_s1_items`: el intervalo abierto
   `../{end}`, `sortby` + `max_items` del lado del servidor y el reordenado
   cliente. Ojo con el parcheo: el hermano hace
