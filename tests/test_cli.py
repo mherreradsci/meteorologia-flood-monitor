@@ -115,3 +115,34 @@ def test_defaults_del_script_hermano(monkeypatch):
     assert a.local_time is False
     assert a.days_back is None   # sin límite: todo el archivo
     assert a.region == flood_monitor.DEFAULT_REGION
+
+
+# --------------------------------------------------------------------------- #
+# --ref-days y la revisita mínima de Sentinel-1 (solo con --change)
+# --------------------------------------------------------------------------- #
+def test_ref_days_igual_al_minimo_con_change_falla(monkeypatch):
+    """Con --ref-days <= MIN_REF_SEPARATION_DAYS, search_reference_s1 pediría
+    a la API un rango invertido (start más reciente que end) y pystac_client
+    lo rechaza con un traceback. El guard en parse_args corta antes, con un
+    mensaje claro."""
+    minimo = flood_monitor.MIN_REF_SEPARATION_DAYS
+    with pytest.raises(SystemExit):
+        parsear(["--place", "Tongoy", "--change", "--ref-days", str(minimo)],
+                flood_monitor, monkeypatch)
+
+
+def test_ref_days_bajo_el_minimo_sin_change_no_falla(monkeypatch):
+    """Sin --change, --ref-days no se usa: no hay ventana que invertir."""
+    minimo = flood_monitor.MIN_REF_SEPARATION_DAYS
+    a = parsear(["--place", "Tongoy", "--ref-days", str(minimo - 1)],
+                flood_monitor, monkeypatch)
+
+    assert a.ref_days == minimo - 1
+
+
+def test_ref_days_sobre_el_minimo_con_change_no_falla(monkeypatch):
+    minimo = flood_monitor.MIN_REF_SEPARATION_DAYS
+    a = parsear(["--place", "Tongoy", "--change", "--ref-days", str(minimo + 1)],
+                flood_monitor, monkeypatch)
+
+    assert a.ref_days == minimo + 1

@@ -42,6 +42,10 @@ OUTPUT_DIR = Path("output")
 DB_NODATA = -9999.0
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 DEFAULT_REGION = "Región de Coquimbo, Chile"
+# Revisita mínima de Sentinel-1: separación exigida entre la imagen actual y
+# la de referencia en --change. --ref-days tiene que superar esto o la
+# ventana de búsqueda de la referencia queda invertida (ver parse_args).
+MIN_REF_SEPARATION_DAYS = 6
 # STAC permite items sin `datetime` (los que declaran start/end_datetime en su
 # lugar). Sentinel-1 RTC siempre lo trae, pero ordenar por un valor que puede
 # ser None revienta al comparar, así que esos items van al fondo. Compartida
@@ -106,7 +110,13 @@ def parse_args() -> argparse.Namespace:
                    help="Pendiente máxima en grados (Copernicus DEM): píxeles "
                         "más empinados se descartan como falsos positivos "
                         "(sombras de relieve). 0 desactiva. Default: 5")
-    return p.parse_args()
+    args = p.parse_args()
+    if args.change and args.ref_days <= MIN_REF_SEPARATION_DAYS:
+        p.error(f"--ref-days debe ser mayor a {MIN_REF_SEPARATION_DAYS} (la "
+                f"revisita mínima de Sentinel-1 con la que se busca la "
+                f"referencia); {args.ref_days} no deja ventana de búsqueda "
+                f"válida.")
+    return args
 
 
 def geocode_place(place: str, region: str, buffer_km: float):
@@ -303,8 +313,8 @@ def search_reference_s1(geom: dict, current, ref_days: int):
     relativa (misma geometría de adquisición). Devuelve el item o None."""
     orbit = current.properties.get("sat:relative_orbit")
     state = current.properties.get("sat:orbit_state")
-    # Al menos 6 días de separación (revisita mínima S1); hasta ref_days.
-    end = current.datetime - timedelta(days=6)
+    # Al menos MIN_REF_SEPARATION_DAYS de separación; hasta ref_days.
+    end = current.datetime - timedelta(days=MIN_REF_SEPARATION_DAYS)
     start = current.datetime - timedelta(days=ref_days)
     search = stac_catalog().search(
         collections=["sentinel-1-rtc"],
