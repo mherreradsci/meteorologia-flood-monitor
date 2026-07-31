@@ -41,6 +41,11 @@ def test_los_defaults_son_los_documentados():
     assert a.dry_run is False
     assert a.output_dir == cli.DEFAULT_OUTPUT_DIR
     assert a.config_dir == cli.DEFAULT_CONFIG_DIR
+    # Mismos defaults que flood_monitor.py: sar_layer.py envuelve
+    # water_threshold/detect_flood/slope_mask directamente.
+    assert a.threshold is None
+    assert a.min_area_px == 20
+    assert a.max_slope == 5.0
 
 
 def test_fechas_llegan_como_texto_sin_parsear():

@@ -95,19 +95,12 @@ def main(argv: list[str] | None = None) -> None:
           "(disponibilidad real por red/credenciales se verifica en las "
           "fases que agregan cada sensor).")
 
-    if not args.dry_run:
-        raise SystemExit(
-            "[!] Todavía no implementado: por ahora solo --dry-run "
-            "funciona (Fase 1 — fundamentos). Las fases siguientes agregan "
-            "las capas de sensores, la fusión y la comparación real.")
-
     tag = build_run_tag(args, bbox, start, end)
     print(f"[+] ID de corrida: {tag}")
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
     manifest = {
         "run_tag": tag,
-        "dry_run": True,
+        "dry_run": args.dry_run,
         "aoi": {
             "mode": ("place" if args.place else
                     "aoi" if args.aoi else "bbox"),
@@ -131,11 +124,56 @@ def main(argv: list[str] | None = None) -> None:
         "python_version": platform.python_version(),
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
     }
+
+    if not args.dry_run:
+        # Fase 2: Sentinel-1 es el único sensor implementado. Sentinel-2 y
+        # Dynamic World, aunque estén prendidos en config, todavía no
+        # tienen módulo — se reportan como pendientes, no como error: es
+        # la misma degradación gradual que FR3 pide para un sensor sin
+        # datos, aplicada acá a un sensor sin *código* todavía.
+        outputs: dict = {}
+        sensors: dict = {}
+        if region_cfg.datasets.sentinel1:
+            from . import sar_layer
+
+            result = sar_layer.build_real_flood_layer(
+                geom, bbox, start, end, threshold=args.threshold,
+                min_area_px=args.min_area_px, max_slope=args.max_slope)
+            if result is not None:
+                paths = sar_layer.write_geotiff_geojson(
+                    result.template, result.flood, args.output_dir, tag)
+                outputs["sentinel1"] = {
+                    "tif": str(paths["tif"]),
+                    "geojson": (str(paths["geojson"])
+                               if paths["geojson"] else None),
+                }
+                sensors["sentinel1"] = {
+                    "acquisitions": [asdict(a) for a in result.acquisitions],
+                    "skipped": result.skipped,
+                }
+            else:
+                sensors["sentinel1"] = {"acquisitions": [], "skipped": []}
+        else:
+            print("[i] Sentinel-1 desactivado para esta región (config).")
+
+        for sensor, enabled in asdict(region_cfg.datasets).items():
+            if sensor == "sentinel1" or not enabled:
+                continue
+            print(f"[i] {sensor}: habilitado en config pero todavía sin "
+                  f"módulo (llega en una fase siguiente) — se ignora esta "
+                  f"corrida.")
+
+        manifest["outputs"] = outputs
+        manifest["sensors"] = sensors
+
+    args.output_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = args.output_dir / f"run_manifest-{tag}.json"
     manifest_path.write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False))
     print(f"[+] Manifiesto: {manifest_path}")
-    print("[✓] Dry-run listo (Fase 1 — sin procesamiento de rásters).")
+    estado = "Dry-run listo (sin procesamiento de rásters)" if args.dry_run \
+        else "Corrida lista"
+    print(f"[✓] {estado}.")
 
 
 if __name__ == "__main__":

@@ -75,6 +75,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR,
                    help=f"Directorio de salida (default: "
                         f"{DEFAULT_OUTPUT_DIR})")
+    # Mismos nombres y defaults que flood_monitor.py: sar_layer.py envuelve
+    # water_threshold/detect_flood/slope_mask directamente, así que estos
+    # tres valores tienen que viajar con la misma semántica.
+    p.add_argument("--threshold", type=float, default=None,
+                   help="Umbral fijo en dB para VH (ej: -18), aplicado a "
+                        "cada escena de la ventana. Si se omite, cada "
+                        "escena usa su propio umbral de Otsu.")
+    p.add_argument("--min-area-px", type=int, default=20,
+                   help="Área mínima (píxeles) para conservar un parche de "
+                        "agua, por escena antes de la unión (default: 20)")
+    p.add_argument("--max-slope", type=float, default=5.0,
+                   help="Pendiente máxima en grados (Copernicus DEM): "
+                        "píxeles más empinados se descartan como falsos "
+                        "positivos. 0 desactiva. Default: 5")
     p.add_argument("--dry-run", action="store_true",
                    help="Resuelve AOI/ventana/config y escribe el "
                         "manifiesto de la corrida, sin procesar rásters. "

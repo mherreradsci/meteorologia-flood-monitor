@@ -4,6 +4,11 @@ geocodifica (a diferencia de --place, que llamaría a Nominatim).
 Mismo espíritu que test_main.py para flood_monitor.py: lo que verifica es lo
 que ningún test aislado puede ver — que el valor de cada flag llegue a la
 etapa que corresponde y que el manifiesto termine reflejando la corrida.
+
+Sin --dry-run, main() ya ejerce sar_layer.py (Fase 2) y con eso red/GDAL de
+verdad — ese camino se prueba aparte, con GeoTIFF sintéticos, en
+test_flood_validation_main_raster.py (marcado `raster`). Este archivo se
+queda con --dry-run a propósito: tiene que seguir pasando en el job offline.
 """
 
 from __future__ import annotations
@@ -58,14 +63,6 @@ def test_susceptibility_explicito_queda_en_el_manifiesto(tmp_path):
 
     data = json.loads(next(out_dir.glob("run_manifest-*.json")).read_text())
     assert data["susceptibility"]["explicit_path"] == str(tif)
-
-
-def test_sin_dry_run_avisa_que_no_esta_implementado(tmp_path, capsys):
-    with pytest.raises(SystemExit):
-        main([*BBOX, "--end-date-utc", "2026-07-22",
-             "--output-dir", str(tmp_path)])
-
-    assert not list(tmp_path.glob("run_manifest-*.json"))
 
 
 def test_region_desconocida_sin_default_falla_temprano(tmp_path):
