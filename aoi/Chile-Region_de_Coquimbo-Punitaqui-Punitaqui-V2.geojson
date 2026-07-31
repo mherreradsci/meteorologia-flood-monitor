@@ -1,0 +1,51 @@
+{
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {
+                "label": "Punitaqui - Coquimbo, Chile"
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -71.750289,
+                            -30.615804
+                        ],
+                        [
+                            -71.750424,
+                            -31.041582
+                        ],
+                        [
+                            -70.771636,
+                            -31.037631
+                        ],
+                        [
+                            -70.768798,
+                            -30.617978
+                        ],
+                        [
+                            -71.750289,
+                            -30.615804
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "label": "Punitaqui - Coquimbo, Chile"
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    -71.260287,
+                    -30.828249
+                ]
+            }
+        }
+    ]
+}
