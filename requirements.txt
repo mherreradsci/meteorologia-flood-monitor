@@ -5,7 +5,10 @@
 pystac-client>=0.8
 planetary-computer>=1.0
 rasterio>=1.3.10
-numpy>=1.26
+# <2.4: pysheds 0.5 llama a np.in1d, removido en numpy 2.4 (confirmado
+# empíricamente — 2.2.6 anda, 2.4.6 no). Subir este techo cuando pysheds
+# lo soporte.
+numpy>=1.26,<2.4
 xarray>=2024.6
 rioxarray>=0.15
 geopandas>=1.0
@@ -14,3 +17,5 @@ scikit-image>=0.24   # filtro de Otsu
 leafmap>=0.36        # mapa interactivo
 matplotlib>=3.9      # quicklook PNG
 requests>=2.32
+pyyaml>=6.0           # config/*.yaml de flood_validation
+pysheds>=0.4          # HAND (terrain.py de flood_validation)
