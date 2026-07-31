@@ -23,7 +23,10 @@ regions:
       sentinel1: true
       sentinel2: true
       dynamic_world: false
-    hand_threshold_m: 5.0
+    # Ver terrain.compute_hand (Fase 4) para el barrido empírico detrás de
+    # estos dos valores, verificado en vivo sobre Tongoy.
+    hand_threshold_m: 15.0
+    drainage_threshold_km2: 0.05
     awei_variant: sh
     confidence_threshold: 0.5
 
@@ -38,7 +41,8 @@ regions:
       sentinel1: true
       sentinel2: true
       dynamic_world: false
-    hand_threshold_m: 5.0
+    hand_threshold_m: 15.0
+    drainage_threshold_km2: 0.05
     awei_variant: sh
     confidence_threshold: 0.5
 
@@ -53,6 +57,7 @@ default:
     sentinel1: true
     sentinel2: true
     dynamic_world: false
-  hand_threshold_m: 5.0
+  hand_threshold_m: 15.0
+  drainage_threshold_km2: 0.05
   awei_variant: sh
   confidence_threshold: 0.5

@@ -36,6 +36,7 @@ regions:
       sentinel2: false
       dynamic_world: true
     hand_threshold_m: 3.5
+    drainage_threshold_km2: 0.2
     awei_variant: nsh
     confidence_threshold: 0.6
 """)
@@ -51,6 +52,7 @@ regions:
     assert r.datasets.sentinel2 is False
     assert r.datasets.dynamic_world is True
     assert r.hand_threshold_m == 3.5
+    assert r.drainage_threshold_km2 == 0.2
     assert r.awei_variant == "nsh"
     assert r.confidence_threshold == 0.6
 
@@ -70,7 +72,8 @@ regions:
     assert r.susceptibility.sufijo_preferido == "gfs"
     assert r.datasets.sentinel1 is True
     assert r.datasets.dynamic_world is False
-    assert r.hand_threshold_m == 5.0
+    assert r.hand_threshold_m == 15.0
+    assert r.drainage_threshold_km2 == 0.05
     assert r.awei_variant == "sh"
 
 

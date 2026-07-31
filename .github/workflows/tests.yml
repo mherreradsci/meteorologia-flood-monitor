@@ -70,13 +70,17 @@ jobs:
       # traen GDAL embebido en sus ruedas manylinux, así que sigue sin hacer
       # falta `apt install gdal-bin libgdal-dev`, que es lo que tarda minutos.
       # leafmap queda fuera a propósito: el mapa HTML ya degrada suave si no
-      # está, y arrastra medio ecosistema de folium.
+      # está, y arrastra medio ecosistema de folium. pysheds es para
+      # terrain.py (HAND) de flood_validation; numpy<2.4 porque pysheds 0.5
+      # llama a np.in1d, removido en numpy 2.4 (ver comentario en
+      # requirements.txt).
       - name: Instalar dependencias de ráster
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt "numpy>=1.26" "shapely>=2.0" \
+          pip install -r requirements-dev.txt "numpy>=1.26,<2.4" "shapely>=2.0" \
                       "scikit-image>=0.24" "rioxarray>=0.15" \
-                      "geopandas>=1.0" "matplotlib>=3.9" "requests>=2.32"
+                      "geopandas>=1.0" "matplotlib>=3.9" "requests>=2.32" \
+                      "pysheds>=0.4"
 
       # Escriben GeoTIFF sintéticos a disco y ejercitan el código real
       # (clip_box, reproject_match, gradiente, dilatación, vectorización y la

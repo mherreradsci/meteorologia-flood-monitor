@@ -43,7 +43,13 @@ class RegionConfig:
     susceptibility: SusceptibilityConfig = field(
         default_factory=SusceptibilityConfig)
     datasets: DatasetToggles = field(default_factory=DatasetToggles)
-    hand_threshold_m: float = 5.0
+    # Defaults verificados en vivo sobre Tongoy (terrain.py, Fase 4): ver
+    # el docstring de terrain.compute_hand para el barrido empírico
+    # detrás de 0.05 km². hand_threshold_m=15 replica el hand_max_m
+    # calibrado del repo hermano — el criterio de altura sí traslada
+    # aunque la definición de cauce (drainage_threshold_km2) no.
+    hand_threshold_m: float = 15.0
+    drainage_threshold_km2: float = 0.05
     awei_variant: str = "sh"  # "nsh" | "sh" | "both"
     confidence_threshold: float = 0.5
 
@@ -103,6 +109,8 @@ def _region_from_dict(entry: dict) -> RegionConfig:
         ),
         hand_threshold_m=entry.get("hand_threshold_m",
                                    defaults.hand_threshold_m),
+        drainage_threshold_km2=entry.get("drainage_threshold_km2",
+                                         defaults.drainage_threshold_km2),
         awei_variant=entry.get("awei_variant", defaults.awei_variant),
         confidence_threshold=entry.get("confidence_threshold",
                                        defaults.confidence_threshold),
