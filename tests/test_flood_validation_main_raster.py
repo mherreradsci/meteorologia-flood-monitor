@@ -22,6 +22,7 @@ los cinco.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -391,3 +392,38 @@ regions:
     assert not list(out_dir.glob("validation_metrics-*.json"))
     data = json.loads(next(out_dir.glob("run_manifest-*.json")).read_text())
     assert data["validation"] is None
+
+
+# --------------------------------------------------------------------------- #
+# Fase 6: reporte (mapa/CSV/Markdown), a través de main()
+# --------------------------------------------------------------------------- #
+def test_reporte_se_escribe_cuando_hay_fusion(monkeypatch, tmp_path):
+    s1 = ItemConRaster(vh=geotiff(tmp_path, "vh.tif", escena_vh()))
+    s1.datetime = utc(2026, 7, 16, 10, 2, 47)
+    s1.id = "S1D_escena"
+    s1.properties = {"sat:relative_orbit": 156, "sat:orbit_state": "descending"}
+    catalogo = CatalogoFalso(escenas_s1=[s1])
+    _instalar(monkeypatch, catalogo)
+
+    out_dir = _correr(tmp_path)
+
+    data = json.loads(next(out_dir.glob("run_manifest-*.json")).read_text())
+    assert data["report"] is not None
+    assert data["report"]["csv"]
+    assert data["report"]["markdown"]
+    assert Path(data["report"]["csv"]).exists()
+    assert Path(data["report"]["markdown"]).exists()
+    # El mapa HTML depende de leafmap (instalado acá, pero no en el job
+    # `raster` de CI): si está, tiene que existir; si no, degrada a None.
+    if data["report"]["map_html"] is not None:
+        assert Path(data["report"]["map_html"]).exists()
+
+
+def test_sin_fusion_no_hay_bloque_de_reporte(monkeypatch, tmp_path):
+    catalogo = CatalogoFalso()
+    _instalar(monkeypatch, catalogo)
+
+    out_dir = _correr(tmp_path)
+
+    data = json.loads(next(out_dir.glob("run_manifest-*.json")).read_text())
+    assert data["report"] is None

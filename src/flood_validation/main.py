@@ -198,6 +198,7 @@ def main(argv: list[str] | None = None) -> None:
 
         fusion_info: dict | None = None
         validation_info: dict | None = None
+        fused = susceptible_mask = metrics_dict = None
         if sar_result is not None or optical_result is not None:
             from dataclasses import asdict as _asdict
 
@@ -222,6 +223,7 @@ def main(argv: list[str] | None = None) -> None:
                     "terrain_excluded_px": fused.terrain_excluded_px,
                     "seasonal_excluded_px": fused.seasonal_excluded_px,
                 }
+                fused_geojson_path = paths["geojson"]
 
                 # Fase 5: comparar la capa fusionada contra el ciclo de
                 # susceptibilidad del repo hermano que corresponda a esta
@@ -256,18 +258,55 @@ def main(argv: list[str] | None = None) -> None:
                             resolution_m=abs(res_x),
                             buffer_tolerance_m=validation_cfg.buffer_tolerance_m,
                             hand=fused.hand)
+                        metrics_dict = metrics_mod.evaluation_to_dict(resultado)
                         metrics_path = (args.output_dir /
                                        f"validation_metrics-{tag}.json")
                         metrics_path.write_text(json.dumps(
-                            {**validation_info,
-                             **metrics_mod.evaluation_to_dict(resultado)},
+                            {**validation_info, **metrics_dict},
                             indent=2, ensure_ascii=False))
                         print(f"[+] Métricas de validación: {metrics_path}")
                         validation_info["metrics_path"] = str(metrics_path)
+
+        # Fase 6: bundle de reporte (mapa HTML, CSV, Markdown) — solo si
+        # hubo algo que fusionar; sin eso no hay grilla de referencia ni
+        # nada geográfico que mostrar.
+        report_info: dict | None = None
+        if fused is not None:
+            from . import report
+
+            ctx = report.ReportContext(
+                tag=tag, geom=geom, bbox=bbox, region=args.region,
+                place=args.place, start=start, end=end,
+                template=fused.template,
+                sar_acquisitions=(sensors.get("sentinel1", {})
+                                 .get("acquisitions", [])),
+                sar_skipped=sensors.get("sentinel1", {}).get("skipped", []),
+                optical_acquisitions=(sensors.get("sentinel2", {})
+                                     .get("acquisitions", [])),
+                optical_skipped=sensors.get("sentinel2", {}).get("skipped", []),
+                fused=fused, fused_geojson_path=fused_geojson_path,
+                susceptibility_cycle=validation_info,
+                susceptible_mask=susceptible_mask, metrics=metrics_dict)
+            map_path = report.build_html_map(ctx, args.output_dir)
+            csv_path = report.write_csv_summary(ctx, args.output_dir)
+            md_path = report.write_markdown_report(ctx, args.output_dir, {
+                "GeoTIFF fusionado": fusion_info.get("tif") if fusion_info else None,
+                "GeoJSON fusionado": fusion_info.get("geojson") if fusion_info else None,
+                "Métricas (JSON)": (validation_info.get("metrics_path")
+                                   if validation_info else None),
+                "Resumen (CSV)": csv_path,
+            })
+            report_info = {
+                "map_html": str(map_path) if map_path else None,
+                "csv": str(csv_path),
+                "markdown": str(md_path),
+            }
+
         manifest["outputs"] = result_outputs
         manifest["sensors"] = sensors
         manifest["fusion"] = fusion_info
         manifest["validation"] = validation_info
+        manifest["report"] = report_info
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = args.output_dir / f"run_manifest-{tag}.json"
