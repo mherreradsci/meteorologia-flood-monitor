@@ -35,6 +35,9 @@ class FusionResult:
     sensors_used: list[str] = field(default_factory=list)
     terrain_excluded_px: int = 0
     seasonal_excluded_px: int = 0
+    hand: np.ndarray | None = None  # metros, crudo (no solo la máscara de
+    # exclusión) — para estratificar métricas por bin de HAND en la Fase 5
+    # sin tener que recalcular pysheds otra vez.
 
 
 def fuse(sar_result, optical_result, geom: dict, bbox, *,
@@ -84,13 +87,20 @@ def fuse(sar_result, optical_result, geom: dict, bbox, *,
         return None
     confidence = (agua_ponderada / peso_total).astype("float32")
 
-    terreno_mask = terrain.hand_implausible_mask(
-        geom, bbox, template, drainage_threshold_km2=drainage_threshold_km2,
-        hand_threshold_m=hand_threshold_m)
+    # Se llama a compute_hand directo (no al conveniente
+    # hand_implausible_mask) para quedarse con el HAND crudo, no solo la
+    # máscara de exclusión — metrics.py lo reusa para estratificar sin
+    # recalcular pysheds una segunda vez.
+    hand = None
     terrain_excluded_px = 0
-    if terreno_mask is not None:
-        terrain_excluded_px = int(((confidence > 0) & terreno_mask).sum())
-        confidence = np.where(terreno_mask, 0.0, confidence)
+    if hand_threshold_m > 0:
+        hand = terrain.compute_hand(
+            geom, bbox, template,
+            drainage_threshold_km2=drainage_threshold_km2)
+        if hand is not None:
+            terreno_mask = np.isfinite(hand) & (hand > hand_threshold_m)
+            terrain_excluded_px = int(((confidence > 0) & terreno_mask).sum())
+            confidence = np.where(terreno_mask, 0.0, confidence)
 
     estacional_mask = seasonality.seasonal_water_mask(
         geom, bbox, template, min_months=seasonal_min_months)
@@ -117,4 +127,5 @@ def fuse(sar_result, optical_result, geom: dict, bbox, *,
     return FusionResult(confidence=confidence, tier=tier, template=template,
                         sensors_used=sensores_usados,
                         terrain_excluded_px=terrain_excluded_px,
-                        seasonal_excluded_px=seasonal_excluded_px)
+                        seasonal_excluded_px=seasonal_excluded_px,
+                        hand=hand)

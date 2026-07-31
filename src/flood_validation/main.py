@@ -197,6 +197,7 @@ def main(argv: list[str] | None = None) -> None:
                   "esta corrida.")
 
         fusion_info: dict | None = None
+        validation_info: dict | None = None
         if sar_result is not None or optical_result is not None:
             from dataclasses import asdict as _asdict
 
@@ -221,9 +222,52 @@ def main(argv: list[str] | None = None) -> None:
                     "terrain_excluded_px": fused.terrain_excluded_px,
                     "seasonal_excluded_px": fused.seasonal_excluded_px,
                 }
+
+                # Fase 5: comparar la capa fusionada contra el ciclo de
+                # susceptibilidad del repo hermano que corresponda a esta
+                # ventana (o la ruta explícita de --susceptibility).
+                from . import susceptibility as susc
+
+                ciclo = susc.resolve_susceptibility(
+                    explicit_path=susceptibility_path,
+                    source_root=region_cfg.susceptibility.source_root,
+                    sufijo_preferido=region_cfg.susceptibility.sufijo_preferido,
+                    start=start, end=end, base_dir=cli.REPO_ROOT)
+                if ciclo is None:
+                    print("[!] Susceptibilidad: no hay ruta explícita ni "
+                          "ningún ciclo que cubra esta ventana — sin nada "
+                          "que comparar.")
+                else:
+                    susceptible_mask = susc.load_susceptibility(
+                        ciclo.path, fused.template, bbox)
+                    validation_info = {
+                        "cycle_path": str(ciclo.path),
+                        "cycle_sufijo": ciclo.sufijo,
+                        "cycle_utc": (ciclo.cycle_utc.isoformat()
+                                     if ciclo.cycle_utc else None),
+                    }
+                    if susceptible_mask is not None:
+                        from . import metrics as metrics_mod
+
+                        res_x, res_y = fused.template.rio.resolution()
+                        resultado = metrics_mod.evaluate(
+                            susceptible_mask, fused.tier > 0,
+                            pixel_area_km2=abs(res_x * res_y) / 1e6,
+                            resolution_m=abs(res_x),
+                            buffer_tolerance_m=validation_cfg.buffer_tolerance_m,
+                            hand=fused.hand)
+                        metrics_path = (args.output_dir /
+                                       f"validation_metrics-{tag}.json")
+                        metrics_path.write_text(json.dumps(
+                            {**validation_info,
+                             **metrics_mod.evaluation_to_dict(resultado)},
+                            indent=2, ensure_ascii=False))
+                        print(f"[+] Métricas de validación: {metrics_path}")
+                        validation_info["metrics_path"] = str(metrics_path)
         manifest["outputs"] = result_outputs
         manifest["sensors"] = sensors
         manifest["fusion"] = fusion_info
+        manifest["validation"] = validation_info
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = args.output_dir / f"run_manifest-{tag}.json"

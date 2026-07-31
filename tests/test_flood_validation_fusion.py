@@ -29,8 +29,10 @@ TIERS = {"high": 0.75, "medium": 0.5, "low": 0.25}
 @pytest.fixture(autouse=True)
 def sin_terreno_ni_estacional(monkeypatch):
     """Por default ninguno de los dos filtros excluye nada; los tests que
-    sí los necesitan los sobreescriben."""
-    monkeypatch.setattr(fusion.terrain, "hand_implausible_mask",
+    sí los necesitan los sobreescriben. fusion.py llama a
+    terrain.compute_hand directo (no al conveniente hand_implausible_mask)
+    para quedarse con el HAND crudo — ver FusionResult.hand."""
+    monkeypatch.setattr(fusion.terrain, "compute_hand",
                         lambda *a, **kw: None)
     monkeypatch.setattr(fusion.seasonality, "seasonal_water_mask",
                         lambda *a, **kw: None)
@@ -101,10 +103,12 @@ def test_terreno_implausible_excluye_pese_a_que_los_sensores_dicen_agua(
     template = grilla(np.zeros((10, 10)))
     agua = np.zeros((10, 10), dtype=bool)
     agua[2:5, 2:5] = True
-    terreno = np.zeros((10, 10), dtype=bool)
-    terreno[2:5, 2:5] = True
-    monkeypatch.setattr(fusion.terrain, "hand_implausible_mask",
-                        lambda *a, **kw: terreno)
+    # HAND crudo: por encima del hand_threshold_m default (15) justo donde
+    # los sensores dicen agua.
+    hand = np.zeros((10, 10), dtype="float32")
+    hand[2:5, 2:5] = 100.0
+    monkeypatch.setattr(fusion.terrain, "compute_hand",
+                        lambda *a, **kw: hand)
 
     resultado = fusion.fuse(_sar(agua, template), _optico(agua, template),
                             GEOM, BBOX, fusion_weights=PESOS,
@@ -113,6 +117,30 @@ def test_terreno_implausible_excluye_pese_a_que_los_sensores_dicen_agua(
     assert resultado.confidence[2:5, 2:5].max() == 0.0
     assert resultado.tier[2:5, 2:5].max() == fusion.TIER_SECA
     assert resultado.terrain_excluded_px == 9
+    assert resultado.hand is hand  # FusionResult expone el HAND crudo
+
+
+def test_hand_threshold_m_cero_no_llama_a_compute_hand(monkeypatch):
+    """--hand-threshold-equivalente 0 desactiva el filtro sin siquiera
+    intentar calcular HAND — misma convención que --max-slope 0."""
+    template = grilla(np.zeros((10, 10)))
+    agua = np.zeros((10, 10), dtype=bool)
+    agua[2:5, 2:5] = True
+    llamado = {"si": False}
+
+    def fake_compute_hand(*a, **kw):
+        llamado["si"] = True
+        return np.zeros((10, 10), dtype="float32")
+
+    monkeypatch.setattr(fusion.terrain, "compute_hand", fake_compute_hand)
+
+    resultado = fusion.fuse(_sar(agua, template), _optico(agua, template),
+                            GEOM, BBOX, fusion_weights=PESOS,
+                            confidence_tiers=TIERS, hand_threshold_m=0)
+
+    assert llamado["si"] is False
+    assert resultado.hand is None
+    assert resultado.terrain_excluded_px == 0
 
 
 def test_agua_estacional_excluye_pese_a_que_los_sensores_dicen_agua(

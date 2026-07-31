@@ -303,3 +303,91 @@ def test_sin_ningun_sensor_fusion_queda_none_en_el_manifiesto(
     assert not list(out_dir.glob("real_flood_fused_*.tif"))
     data = json.loads(next(out_dir.glob("run_manifest-*.json")).read_text())
     assert data["fusion"] is None
+
+
+# --------------------------------------------------------------------------- #
+# Fase 5: susceptibilidad + métricas, a través de main()
+# --------------------------------------------------------------------------- #
+def test_susceptibilidad_se_resuelve_y_las_metricas_se_escriben(
+        monkeypatch, tmp_path):
+    import numpy as np
+
+    from raster_helpers import grilla
+
+    s1 = ItemConRaster(vh=geotiff(tmp_path, "vh.tif", escena_vh()))
+    s1.datetime = utc(2026, 7, 16, 10, 2, 47)
+    s1.id = "S1D_escena"
+    s1.properties = {"sat:relative_orbit": 156, "sat:orbit_state": "descending"}
+    catalogo = CatalogoFalso(escenas_s1=[s1])
+    _instalar(monkeypatch, catalogo)
+
+    # Producto de susceptibilidad sintético: mismo bbox/grilla que la
+    # escena S1, coincidiendo con su parche de agua (10:20, 10:20).
+    susc_root = tmp_path / "proyecciones" / "outputs" / "coquimbo"
+    gfs_dir = susc_root / "gfs"
+    gfs_dir.mkdir(parents=True)
+    susc_valores = np.zeros((LADO, LADO), dtype="float32")
+    susc_valores[10:20, 10:20] = 1.0
+    grilla(susc_valores).rio.to_raster(
+        gfs_dir / "mapa_anegamientos_gfs_extension_20260714_00utc_20260714-010000.tif")
+
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "regions.yaml").write_text(f"""
+regions:
+  "Región de Coquimbo, Chile":
+    display_name: "Coquimbo"
+    susceptibility:
+      source_root: "{susc_root}"
+      sufijo_preferido: gfs
+""")
+    (config_dir / "validation.yaml").write_text("")
+
+    xmin, ymin, xmax, ymax = bbox_lonlat(LADO, LADO)
+    out_dir = tmp_path / "salida"
+    main(["--bbox", str(xmin), str(ymin), str(xmax), str(ymax),
+         "--start-date-utc", "2026-07-15", "--end-date-utc", "2026-07-22",
+         "--output-dir", str(out_dir), "--config-dir", str(config_dir)])
+
+    metricas = list(out_dir.glob("validation_metrics-*.json"))
+    assert len(metricas) == 1
+    data = json.loads(next(out_dir.glob("run_manifest-*.json")).read_text())
+    assert data["validation"] is not None
+    assert data["validation"]["cycle_sufijo"] == "gfs"
+    assert data["validation"]["metrics_path"] == str(metricas[0])
+
+    m = json.loads(metricas[0].read_text())
+    assert m["confusion_matrix"]["tp"] > 0
+    assert m["cycle_utc"] == "2026-07-14T00:00:00+00:00"
+
+
+def test_sin_ciclo_que_cubra_la_ventana_validation_queda_none(
+        monkeypatch, tmp_path):
+    s1 = ItemConRaster(vh=geotiff(tmp_path, "vh.tif", escena_vh()))
+    s1.datetime = utc(2026, 7, 16, 10, 2, 47)
+    s1.id = "S1D_escena"
+    s1.properties = {"sat:relative_orbit": 156, "sat:orbit_state": "descending"}
+    catalogo = CatalogoFalso(escenas_s1=[s1])
+    _instalar(monkeypatch, catalogo)
+
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "regions.yaml").write_text(f"""
+regions:
+  "Región de Coquimbo, Chile":
+    display_name: "Coquimbo"
+    susceptibility:
+      source_root: "{tmp_path / 'sin_nada'}"
+      sufijo_preferido: gfs
+""")
+    (config_dir / "validation.yaml").write_text("")
+
+    xmin, ymin, xmax, ymax = bbox_lonlat(LADO, LADO)
+    out_dir = tmp_path / "salida"
+    main(["--bbox", str(xmin), str(ymin), str(xmax), str(ymax),
+         "--start-date-utc", "2026-07-15", "--end-date-utc", "2026-07-22",
+         "--output-dir", str(out_dir), "--config-dir", str(config_dir)])
+
+    assert not list(out_dir.glob("validation_metrics-*.json"))
+    data = json.loads(next(out_dir.glob("run_manifest-*.json")).read_text())
+    assert data["validation"] is None
