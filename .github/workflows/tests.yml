@@ -32,8 +32,10 @@ jobs:
       # La suite offline no los toca porque flood_monitor.py importa las
       # librerías pesadas *dentro* de las funciones; a nivel de módulo solo
       # necesita numpy. Lo demás son wheels puras: shapely para el AOI,
-      # scikit-image para Otsu y remove_small_objects, y requests para
-      # geocode_place (se mockea, pero hay que poder importarlo).
+      # scikit-image para Otsu y remove_small_objects, requests para
+      # geocode_place (se mockea, pero hay que poder importarlo), y pyyaml
+      # para el config loader de flood_validation (config.py también hace el
+      # import perezoso, pero los tests offline sí llaman a esas funciones).
       #
       # Ese mínimo es intencional: si alguien sube un import pesado al tope de
       # un módulo, este job falla. Es la red que mantiene los imports perezosos
@@ -42,7 +44,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt "numpy>=1.26" "shapely>=2.0" \
-                      "scikit-image>=0.24" "requests>=2.32"
+                      "scikit-image>=0.24" "requests>=2.32" "pyyaml>=6.0"
 
       # `network` consulta Planetary Computer: fuera de CI para no depender de
       # un servicio externo ni de su latencia (corrélos en local con

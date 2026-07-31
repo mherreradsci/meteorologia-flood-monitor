@@ -14,3 +14,4 @@ scikit-image>=0.24   # filtro de Otsu
 leafmap>=0.36        # mapa interactivo
 matplotlib>=3.9      # quicklook PNG
 requests>=2.32
+pyyaml>=6.0           # config/*.yaml de flood_validation

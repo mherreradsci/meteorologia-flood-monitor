@@ -147,7 +147,7 @@ Los tests de red usan un bbox literal de Tongoy (`TONGOY_GEOM` en
 
 | job | instala | corre |
 |---|---|---|
-| `offline` | pytest, numpy, shapely, scikit-image, requests | `-m "not network and not raster"` |
+| `offline` | pytest, numpy, shapely, scikit-image, requests, pyyaml | `-m "not network and not raster"` |
 | `raster` | lo anterior + rioxarray, geopandas, matplotlib | `-m raster` |
 
 Están separados a propósito. El job `offline` **no instala rioxarray**, así
@@ -155,7 +155,12 @@ que si alguien sube un import pesado al tope de un módulo, falla en la
 recolección — es lo que mantiene los imports perezosos, y con ellos el
 arranque rápido del `--help`. Metiendo rioxarray en ese mismo job esa alarma
 se apagaría (verificado: con `import rioxarray` a nivel de módulo, `offline`
-da 5 errores y `raster` pasa igual).
+da 5 errores y `raster` pasa igual). `pyyaml` es la excepción liviana: no es
+GDAL, es una rueda pura, pero igual hace falta en `offline` porque
+`tests/test_flood_validation_config.py` llama en serio al loader de
+`flood_validation/config.py` — el `import yaml` ahí sigue siendo perezoso
+(dentro de la función, no al tope del módulo), la instalación en CI es lo
+que cambió, no el estilo de import.
 
 Ninguno de los dos necesita `apt install gdal-bin libgdal-dev`: las ruedas
 manylinux de rasterio traen GDAL embebido. El apt del README hace falta solo
