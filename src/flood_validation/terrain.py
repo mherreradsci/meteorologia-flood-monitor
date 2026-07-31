@@ -110,7 +110,7 @@ def compute_hand(geom: dict, bbox, template,
             dem_padded, template.shape, drainage_threshold_km2)
         pct_valid = 100.0 * np.isfinite(interior).mean()
         print(f"[+] HAND calculado (umbral de cauce "
-              f"{drainage_threshold_km2:.1f} km², {n_streams:,} celdas de "
+              f"{drainage_threshold_km2:.3g} km², {n_streams:,} celdas de "
               f"cauce en la grilla con margen): {pct_valid:.1f}% de celdas "
               f"válidas")
         return interior

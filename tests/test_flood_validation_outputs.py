@@ -61,3 +61,41 @@ def test_el_prefijo_distingue_las_salidas_de_cada_sensor(tmp_path):
 
     assert p1["tif"] != p2["tif"]
     assert p1["tif"].exists() and p2["tif"].exists()
+
+
+# --------------------------------------------------------------------------- #
+# write_tiered_geotiff_geojson (fusion.py, Fase 4)
+# --------------------------------------------------------------------------- #
+def test_tiered_escribe_geotiff_y_geojson_con_propiedad_tier(tmp_path):
+    import geopandas as gpd
+    import rioxarray
+
+    template = grilla(np.zeros((LADO, LADO), dtype="float32"))
+    tier = np.zeros((LADO, LADO), dtype="uint8")
+    tier[2:5, 2:5] = 3   # alta
+    tier[10:12, 10:12] = 1   # baja
+    labels = {1: "baja", 2: "media", 3: "alta"}
+
+    paths = outputs.write_tiered_geotiff_geojson(
+        template, tier, tmp_path, "tag", prefix="real_flood_fused",
+        tier_labels=labels)
+
+    assert paths["tif"].exists()
+    escrito = rioxarray.open_rasterio(paths["tif"]).values.squeeze()
+    assert int(escrito.max()) == 3
+
+    gdf = gpd.read_file(paths["geojson"])
+    assert set(gdf["tier"]) == {1, 3}
+    assert set(gdf["tier_label"]) == {"baja", "alta"}
+
+
+def test_tiered_sin_nada_por_encima_de_seca_no_escribe_geojson(tmp_path):
+    template = grilla(np.zeros((LADO, LADO), dtype="float32"))
+    tier = np.zeros((LADO, LADO), dtype="uint8")
+
+    paths = outputs.write_tiered_geotiff_geojson(
+        template, tier, tmp_path, "tag_seco", prefix="real_flood_fused",
+        tier_labels={1: "baja", 2: "media", 3: "alta"})
+
+    assert paths["tif"].exists()
+    assert paths["geojson"] is None

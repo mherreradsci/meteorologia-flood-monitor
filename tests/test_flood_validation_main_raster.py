@@ -3,16 +3,20 @@ sintéticos en vez de red. Marcado `raster` — separado de
 test_flood_validation_main.py (que se queda solo con --dry-run) para no
 meter rioxarray en el job offline.
 
-`sar_layer.py` y `optical_layer.py` importaron su propia referencia a
-`stac_catalog` (`from flood_monitor import stac_catalog` /
-`from flood_monitor import ..., stac_catalog`), así que parchear solo
-`flood_monitor.stac_catalog` no alcanza para ninguno de los dos — la misma
-lección que ya deja conftest.py sobre `list_s1_items`. Sentinel-2 está
-prendido por default en `regions.yaml`, así que CUALQUIER test que corra
-`main()` sin `--dry-run` sin parchear `optical_layer.stac_catalog` termina
-pegándole a la Planetary Computer real (ocurrió una vez: una corrida de
-~6 minutos donde debía tardar segundos). Los tres módulos se parchean
-siempre juntos acá, aunque un test individual no vaya a ejercitar los tres.
+`sar_layer.py`, `optical_layer.py`, `terrain.py` y `seasonality.py`
+importaron cada uno su propia referencia a `stac_catalog` (`from
+flood_monitor import stac_catalog`, o junto con otros nombres), así que
+parchear solo `flood_monitor.stac_catalog` no alcanza para ninguno — la
+misma lección que ya deja conftest.py sobre `list_s1_items`. Sentinel-2
+está prendido por default en `regions.yaml`, así que CUALQUIER test que
+corra `main()` sin `--dry-run` sin parchear `optical_layer.stac_catalog`
+termina pegándole a la Planetary Computer real (pasó una vez: una corrida
+de ~6 minutos donde debía tardar segundos). Con la Fase 4, `main()` invoca
+además `fusion.fuse()`, que llama a `terrain.hand_implausible_mask` y
+`seasonality.seasonal_water_mask` — pasó *de nuevo*, esta vez con esos dos
+módulos sin parchear (suite completa de ~13s a ~53s). Los cinco módulos se
+parchean siempre juntos acá, aunque un test individual no vaya a ejercitar
+los cinco.
 """
 
 from __future__ import annotations
@@ -25,7 +29,8 @@ pytest.importorskip("rioxarray")
 pytest.importorskip("geopandas")
 
 import flood_monitor  # noqa: E402
-from flood_validation import optical_layer, sar_layer  # noqa: E402
+from flood_validation import (optical_layer, sar_layer,  # noqa: E402
+                              seasonality, terrain)
 from flood_validation.main import main  # noqa: E402
 from helpers import utc  # noqa: E402
 from raster_helpers import ItemConRaster, bbox_lonlat, geotiff  # noqa: E402
@@ -68,6 +73,8 @@ def _instalar(monkeypatch, catalogo):
     monkeypatch.setattr(flood_monitor, "stac_catalog", lambda: catalogo)
     monkeypatch.setattr(sar_layer, "stac_catalog", lambda: catalogo)
     monkeypatch.setattr(optical_layer, "stac_catalog", lambda: catalogo)
+    monkeypatch.setattr(terrain, "stac_catalog", lambda: catalogo)
+    monkeypatch.setattr(seasonality, "stac_catalog", lambda: catalogo)
 
 
 @pytest.fixture
@@ -255,3 +262,44 @@ def test_sin_awei_variant_usa_el_de_la_region(monkeypatch, tmp_path):
     _correr(tmp_path)
 
     assert registro["kwargs"]["awei_variant"] == "sh"
+
+
+# --------------------------------------------------------------------------- #
+# Fase 4: fusión, a través de main()
+# --------------------------------------------------------------------------- #
+def test_fusion_escribe_geotiff_geojson_y_manifiesto(monkeypatch, tmp_path):
+    s1 = ItemConRaster(vh=geotiff(tmp_path, "vh.tif", escena_vh()))
+    s1.datetime = utc(2026, 7, 16, 10, 2, 47)
+    s1.id = "S1D_escena"
+    s1.properties = {"sat:relative_orbit": 156, "sat:orbit_state": "descending"}
+
+    s2 = _escena_s2("S2_a", utc(2026, 7, 17), tmp_path,
+                    parche_agua=(slice(10, 20), slice(10, 20)))
+    catalogo = CatalogoFalso(escenas_s1=[s1], escenas_s2=[s2])
+    _instalar(monkeypatch, catalogo)
+
+    out_dir = _correr(tmp_path)
+
+    tifs = list(out_dir.glob("real_flood_fused_*.tif"))
+    assert len(tifs) == 1
+    data = json.loads(next(out_dir.glob("run_manifest-*.json")).read_text())
+    assert data["fusion"] is not None
+    assert set(data["fusion"]["sensors_used"]) == {"sentinel1", "sentinel2"}
+    assert data["fusion"]["tif"] == str(tifs[0])
+    # Sin DEM/JRC en este catálogo falso, terrain/seasonality degradan
+    # solos (ya probado por separado) — acá solo importa que no rompan
+    # la corrida y que la fusión llegue a escribirse igual.
+    assert data["fusion"]["terrain_excluded_px"] == 0
+    assert data["fusion"]["seasonal_excluded_px"] == 0
+
+
+def test_sin_ningun_sensor_fusion_queda_none_en_el_manifiesto(
+        monkeypatch, tmp_path):
+    catalogo = CatalogoFalso()
+    _instalar(monkeypatch, catalogo)
+
+    out_dir = _correr(tmp_path)
+
+    assert not list(out_dir.glob("real_flood_fused_*.tif"))
+    data = json.loads(next(out_dir.glob("run_manifest-*.json")).read_text())
+    assert data["fusion"] is None

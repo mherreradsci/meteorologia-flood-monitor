@@ -126,34 +126,37 @@ def main(argv: list[str] | None = None) -> None:
     }
 
     if not args.dry_run:
-        # Fase 3: Sentinel-1 y Sentinel-2 están implementados. Dynamic
-        # World, aunque esté prendido en config, todavía no tiene módulo —
-        # se reporta como pendiente, no como error: la misma degradación
-        # gradual que FR3 pide para un sensor sin datos, aplicada acá a un
-        # sensor sin *código* todavía.
+        # Fase 4: Sentinel-1 y Sentinel-2 están implementados, más la
+        # fusión de ambos con plausibilidad de terreno (HAND) y agua
+        # estacional. Dynamic World, aunque esté prendido en config,
+        # todavía no tiene módulo — se reporta como pendiente, no como
+        # error: la misma degradación gradual que FR3 pide para un sensor
+        # sin datos, aplicada acá a un sensor sin *código* todavía.
         from . import outputs as outputs_io
 
         result_outputs: dict = {}
         sensors: dict = {}
+        sar_result = optical_result = None
 
         if region_cfg.datasets.sentinel1:
             from . import sar_layer
 
-            result = sar_layer.build_real_flood_layer(
+            sar_result = sar_layer.build_real_flood_layer(
                 geom, bbox, start, end, threshold=args.threshold,
                 min_area_px=args.min_area_px, max_slope=args.max_slope)
-            if result is not None:
+            if sar_result is not None:
                 paths = outputs_io.write_geotiff_geojson(
-                    result.template, result.flood, args.output_dir, tag,
-                    prefix="real_flood_s1")
+                    sar_result.template, sar_result.flood, args.output_dir,
+                    tag, prefix="real_flood_s1")
                 result_outputs["sentinel1"] = {
                     "tif": str(paths["tif"]),
                     "geojson": (str(paths["geojson"])
                                if paths["geojson"] else None),
                 }
                 sensors["sentinel1"] = {
-                    "acquisitions": [asdict(a) for a in result.acquisitions],
-                    "skipped": result.skipped,
+                    "acquisitions": [asdict(a) for a in
+                                    sar_result.acquisitions],
+                    "skipped": sar_result.skipped,
                 }
             else:
                 sensors["sentinel1"] = {"acquisitions": [], "skipped": []}
@@ -166,21 +169,22 @@ def main(argv: list[str] | None = None) -> None:
             awei_variant = args.awei_variant or region_cfg.awei_variant
             collection = validation_cfg.stac_collections.get(
                 "sentinel2", "sentinel-2-l2a")
-            result = optical_layer.build_optical_water_layer(
+            optical_result = optical_layer.build_optical_water_layer(
                 geom, bbox, start, end, awei_variant=awei_variant,
                 collection=collection)
-            if result is not None:
+            if optical_result is not None:
                 paths = outputs_io.write_geotiff_geojson(
-                    result.template, result.flood, args.output_dir, tag,
-                    prefix="real_flood_s2")
+                    optical_result.template, optical_result.flood,
+                    args.output_dir, tag, prefix="real_flood_s2")
                 result_outputs["sentinel2"] = {
                     "tif": str(paths["tif"]),
                     "geojson": (str(paths["geojson"])
                                if paths["geojson"] else None),
                 }
                 sensors["sentinel2"] = {
-                    "acquisitions": [asdict(a) for a in result.acquisitions],
-                    "skipped": result.skipped,
+                    "acquisitions": [asdict(a) for a in
+                                    optical_result.acquisitions],
+                    "skipped": optical_result.skipped,
                 }
             else:
                 sensors["sentinel2"] = {"acquisitions": [], "skipped": []}
@@ -192,8 +196,34 @@ def main(argv: list[str] | None = None) -> None:
                   "sin módulo (llega en una fase siguiente) — se ignora "
                   "esta corrida.")
 
+        fusion_info: dict | None = None
+        if sar_result is not None or optical_result is not None:
+            from dataclasses import asdict as _asdict
+
+            from . import fusion
+
+            fused = fusion.fuse(
+                sar_result, optical_result, geom, bbox,
+                fusion_weights=_asdict(validation_cfg.fusion_weights),
+                confidence_tiers=validation_cfg.confidence_tiers,
+                hand_threshold_m=region_cfg.hand_threshold_m,
+                drainage_threshold_km2=region_cfg.drainage_threshold_km2)
+            if fused is not None:
+                paths = outputs_io.write_tiered_geotiff_geojson(
+                    fused.template, fused.tier, args.output_dir, tag,
+                    prefix="real_flood_fused",
+                    tier_labels={1: "baja", 2: "media", 3: "alta"})
+                fusion_info = {
+                    "tif": str(paths["tif"]),
+                    "geojson": (str(paths["geojson"])
+                               if paths["geojson"] else None),
+                    "sensors_used": fused.sensors_used,
+                    "terrain_excluded_px": fused.terrain_excluded_px,
+                    "seasonal_excluded_px": fused.seasonal_excluded_px,
+                }
         manifest["outputs"] = result_outputs
         manifest["sensors"] = sensors
+        manifest["fusion"] = fusion_info
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = args.output_dir / f"run_manifest-{tag}.json"
