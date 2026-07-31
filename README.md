@@ -163,3 +163,27 @@ crontab -e
   con idéntica semántica.
 - **Validación**: comparar contra Copernicus Global Flood Monitoring (GFM):
   https://global-flood.emergency.copernicus.eu/
+
+## flood_validation: validar susceptibilidad contra anegamiento real
+
+Pipeline aparte en `src/flood_validation/` (no modifica lo de arriba) que
+compara el producto de susceptibilidad de `meteorologia-flood-projections`
+(repo hermano) contra una capa de anegamiento real estimada fusionando
+Sentinel-1 y Sentinel-2, con filtros de plausibilidad de terreno (HAND) y
+agua estacional/de riego.
+
+```bash
+cd src
+python -m flood_validation --aoi ../aoi/Chile-Region_de_Coquimbo-Punitaqui-Punitaqui-V2.geojson \
+    --start-date-utc 2026-07-15 --end-date-utc 2026-07-22
+```
+
+Salidas en `output/validation/`: GeoTIFF/GeoJSON por sensor y fusionado,
+`validation_metrics-*.json` (matriz de confusión, Precision/Recall/F1/IoU/
+Kappa/MCC, error de área, desglose por HAND), `validation_summary-*.csv`,
+`validation_report-*.md` y `flood_map-*.html` (mapa interactivo con capas
+por tier de confianza, susceptibilidad y acuerdo/desacuerdo).
+
+Detalle de arquitectura, config (`config/regions.yaml`/`validation.yaml`),
+convenciones de test y limitaciones conocidas: ver la sección
+`flood_validation` de `CLAUDE.md`.

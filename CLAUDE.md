@@ -148,19 +148,28 @@ Los tests de red usan un bbox literal de Tongoy (`TONGOY_GEOM` en
 | job | instala | corre |
 |---|---|---|
 | `offline` | pytest, numpy, shapely, scikit-image, requests, pyyaml | `-m "not network and not raster"` |
-| `raster` | lo anterior + rioxarray, geopandas, matplotlib | `-m raster` |
+| `raster` | lo anterior (sin pyyaml propio, se instala aparte) + rioxarray, geopandas, matplotlib, pysheds, pyyaml | `-m raster` |
 
 Están separados a propósito. El job `offline` **no instala rioxarray**, así
 que si alguien sube un import pesado al tope de un módulo, falla en la
 recolección — es lo que mantiene los imports perezosos, y con ellos el
 arranque rápido del `--help`. Metiendo rioxarray en ese mismo job esa alarma
 se apagaría (verificado: con `import rioxarray` a nivel de módulo, `offline`
-da 5 errores y `raster` pasa igual). `pyyaml` es la excepción liviana: no es
-GDAL, es una rueda pura, pero igual hace falta en `offline` porque
+da 5 errores y `raster` pasa igual). `pyyaml` hace falta en los **dos**
+jobs, por razones distintas: en `offline` porque
 `tests/test_flood_validation_config.py` llama en serio al loader de
-`flood_validation/config.py` — el `import yaml` ahí sigue siendo perezoso
-(dentro de la función, no al tope del módulo), la instalación en CI es lo
-que cambió, no el estilo de import.
+`flood_validation/config.py`; en `raster` porque `flood_validation.main()`
+carga `regions.yaml`/`validation.yaml` siempre, incluso en las corridas
+reales (no solo `--dry-run`) que ejercitan los tests raster de `main()` —
+sin esto, cualquiera de esos tests revienta con `ModuleNotFoundError` antes
+de tocar ningún sensor. En los dos casos el `import yaml` real sigue siendo
+perezoso (dentro de la función, no al tope del módulo); la instalación en
+CI es lo que cambió, no el estilo de import. Este gap en `raster` pasó
+desapercibido durante varias fases seguidas porque el venv de desarrollo
+local ya tenía `pyyaml` instalado (viene en `requirements.txt`) — solo se
+detectó armando a mano un venv que replica el install list exacto de cada
+job de CI y corriendo la selección de tests real ahí, no asumiendo que "pasa
+en local" alcanza. `pysheds` es para `terrain.py` (HAND).
 
 Ninguno de los dos necesita `apt install gdal-bin libgdal-dev`: las ruedas
 manylinux de rasterio traen GDAL embebido. El apt del README hace falta solo
@@ -316,3 +325,238 @@ python list_s1_items.py --aoi ../aoi/Chile-Region_de_Coquimbo-La_huiguera-Chungu
   Use `--min-area-px` and `--max-slope` to suppress these.
 - Sentinel-1 revisit is ~2-6 days depending on location; the script prints
   the age of the image it used.
+
+## flood_validation
+
+Un segundo pipeline independiente en `src/flood_validation/` (paquete, a
+diferencia del script único `flood_monitor.py`) que valida el producto de
+susceptibilidad de anegamiento de `meteorologia-flood-projections` (repo
+hermano, no vive acá) contra una capa de "anegamiento real" estimada con
+sensores remotos públicos (Sentinel-1 SAR, Sentinel-2 óptico, fusionados
+con plausibilidad de terreno y agua estacional). No modifica
+`flood_monitor.py`; importa de ahí `load_aoi`/`geocode_place`/
+`parse_end_date`/`EPOCH`/`slugify`/`stac_catalog`/`read_vh_db`/
+`water_threshold`/`detect_flood`/`permanent_water_mask`/`slope_mask` — la
+dirección del import es siempre `flood_validation` → `flood_monitor`,
+nunca al revés, mismo patrón que ya sigue `list_s1_items.py`.
+
+Historial completo de decisiones, hallazgos y verificaciones en vivo por
+fase: `flood-projections-feature-real-flood.V2.0.md` (fuera de este repo,
+en `/home/mherrera/Proyectos/meteorologia/`). Lo que sigue acá es la
+guía de trabajo, no la bitácora completa.
+
+### Setup
+
+Mismos requisitos que arriba, más lo que ya trae `requirements.txt`:
+`pyyaml` (config) y `pysheds` (HAND). `numpy` queda fijado a `<2.4` ahí
+mismo: `pysheds` 0.5 llama a `np.in1d`, removido en numpy 2.4 (confirmado
+empíricamente — 2.2.6 anda, 2.4.6 no; el repo hermano no lo pisó porque
+corre con 2.2.6).
+
+### Running
+
+```bash
+cd src
+python -m flood_validation --aoi ../aoi/Chile-Region_de_Coquimbo-Punitaqui-Punitaqui-V2.geojson \
+    --start-date-utc 2026-07-15 --end-date-utc 2026-07-22
+python -m flood_validation --bbox -71.5449 -30.3021 -71.4409 -30.2123 --days 10 --end-date-utc 2026-07-22
+python -m flood_validation --place Punitaqui --dry-run   # resuelve AOI/ventana/config, no procesa nada
+```
+
+`--start-date-utc`/`--end-date-utc`/`--local-time`/`--days` comparten
+semántica con `flood_monitor.py` (mismo `parse_end_date`); a diferencia de
+ahí, acá la ventana necesita **los dos extremos** — `--start-date-utc`
+explícito, o `--days` hacia atrás desde `--end-date-utc` — porque esto
+valida una ventana completa, no busca la imagen más reciente. Una fecha
+pelada (`YYYY-MM-DD`) en `--start-date-utc` resuelve a las 00:00:00 (no a
+las 23:59:59 que usa `--end-date-utc`): asimetría a propósito, para que el
+día completo quede adentro de la ventana en los dos extremos.
+
+`--output-dir`/`--config-dir` se resuelven contra la ubicación del paquete
+(`cli.REPO_ROOT`, no el `cwd`) — a diferencia del `OUTPUT_DIR` relativo de
+`flood_monitor.py`, correr desde `src/` o desde la raíz del repo da el
+mismo resultado.
+
+Salidas en `output/validation/` (default): `real_flood_s1-*`,
+`real_flood_s2-*`, `real_flood_fused-*` (`.tif` + `.geojson`),
+`validation_metrics-*.json`, `validation_summary-*.csv`,
+`validation_report-*.md`, `flood_map-*.html`, `run_manifest-*.json` —
+todos con el mismo tag de corrida (`<aoi>_<ventana>_<hex>_<timestamp
+local>`, ver `main.build_run_tag`), así que ninguna corrida pisa a otra.
+
+### Config: `config/regions.yaml` + `config/validation.yaml`
+
+YAML en vez de constantes Python (`config.py`). `regions.yaml` clavea por
+el string exacto de `--region`; una entrada `default` cubre cualquier
+región no configurada, con aviso. Campos por región:
+`susceptibility.source_root` (ruta al `outputs/<region>/` del repo
+hermano, relativa a la raíz de **este** repo) + `sufijo_preferido`
+(`gfs`/`ifs`), `hand_threshold_m` (15.0, del repo hermano),
+`drainage_threshold_km2` (**0.05**, no el 15 km² del hermano — ver HAND
+más abajo), `awei_variant`, `confidence_threshold`. `validation.yaml`:
+`stac_collections`, `fusion_weights` por sensor, `confidence_tiers`
+(cortes alta/media/baja) y `buffer_tolerance_m`.
+
+### Architecture
+
+Pipeline lineal en `main.py`, mismo espíritu que `flood_monitor.main()`:
+
+1. **Config + AOI + ventana** (`cli.py`/`config.py`/`windows.py`) — config
+   primero (lectura local barata, falla rápido si la región no está
+   configurada, antes de tocar red con `--place`). `windows.resolve_window`
+   arma `(start, end)`: `end` reusa `parse_end_date`; `start` viene de
+   `--start-date-utc` o de `end - --days`.
+2. **Sentinel-1** (`sar_layer.py`) — busca **todas** las escenas S1 de la
+   ventana (no la más reciente, como `flood_monitor`), detecta cada una
+   por separado contra una grilla de referencia compartida (la primera
+   escena legible; agua permanente y pendiente se calculan una sola vez,
+   no por escena) y unión (OR) de todas. Una escena que falla al leerse se
+   saltea con aviso, no aborta la ventana.
+3. **Sentinel-2** (`optical_layer.py`) — AWEI (`nsh`/`sh`/`both`,
+   `--awei-variant`) como índice primario, no NDWI/MNDWI (AWEI ya cubre el
+   caso de sombra de relieve que importa en Coquimbo), con máscara SCL de
+   nube/sombra/nieve (clases `{0,1,3,8,9,10,11}` no votan). Una escena sin
+   píxeles despejados se saltea con su cobertura real logueada, no en
+   silencio.
+4. **Terreno — HAND** (`terrain.py`) — `compute_hand`/
+   `hand_implausible_mask`, mismo método pysheds que
+   `meteorologia-flood-projections/src/inundaciones/terrain.py`
+   (`fill_pits→fill_depressions→resolve_flats→flowdir→accumulation→
+   compute_hand`) — leído ese código antes de escribir este, no adivinado.
+   **No** reproyecta directo a la grilla del AOI como `slope_mask`:
+   pysheds asigna dirección de flujo inválida a las celdas en el borde de
+   la grilla que se le pasa, así que computa sobre una grilla con margen
+   (`HAND_PAD_PX`, 30 px ≈ 900 m) y recorta al final — verificado contra
+   un valle sintético (error < 0.2 mm en el interior). `drainage_
+   threshold_km2` default **0.05 km²**, no el 15 km² calibrado del repo
+   hermano: con solo ~900 m de margen, un cauce real casi nunca junta
+   15 km² de área aguas arriba *dentro de ese margen* (verificado en vivo
+   sobre Tongoy: 15 km² → solo 18.6% de celdas con HAND válido; barrido
+   empírico sobre los mismos datos reales landeó en 0.05 km² → 81%
+   válido). No es solo un ajuste numérico: reconoce quebradas chicas en
+   vez de solo ríos con nombre, que es lo apropiado para este filtro en
+   terreno árido.
+5. **Agua estacional** (`seasonality.py`) — banda `seasonality` de JRC GSW
+   (meses/año clasificados como agua, 0-12; valores reales confirmados en
+   Tongoy: enteros 0-9 y 12), no solo `occurrence` (que ya usa
+   `permanent_water_mask`, ocurrencia > 50% del registro entero): un canal
+   de riego con 3-4 meses/año de agua puede tener `occurrence` baja pero
+   `seasonality` alta — el caso intermedio que `permanent_water_mask` deja
+   pasar.
+6. **Fusión** (`fusion.py`) — combina los sensores disponibles sobre la
+   grilla del que tenga más peso (`fusion_weights`), **renormalizando el
+   peso solo entre los sensores con dato para esta ventana** — un sensor
+   ausente no baja la confianza (punto de diseño explícitamente probado en
+   `test_flood_validation_fusion.py`). Aplica HAND y agua estacional como
+   exclusión dura, una sola vez sobre la grilla fusionada, no por sensor
+   (evita calcular HAND/JRC dos veces). Cuantiza en tiers
+   (`confidence_tiers`) → `real_flood_fused-*`.
+7. **Susceptibilidad** (`susceptibility.py`) — el producto del repo
+   hermano no es un archivo único: un raster binario por ciclo de
+   pronóstico (`outputs/<region>/<sufijo>/mapa_anegamientos_<sufijo>_
+   extension_<AAAAMMDD>_<HH>utc_<timestamp-local>.tif`, patrón confirmado
+   contra archivos reales, no adivinado). Cada ciclo proyecta desde lluvia
+   acumulada de 72 h *a partir* de su hora de inicio — `find_cycles`
+   devuelve todos los que se solapan con la ventana pedida, más reciente
+   primero; `resolve_susceptibility` usa el más reciente por default (o
+   `--susceptibility <ruta>` como override incondicional). Rutas relativas
+   en `source_root` se resuelven contra `cli.REPO_ROOT`, no el `cwd` — un
+   bug real de esto (resolvía contra `Path.cwd()`, dando cero ciclos pese
+   a que existían decenas) se encontró recién en la verificación en vivo,
+   porque todos los tests usaban rutas absolutas.
+8. **Métricas** (`metrics.py`) — matriz de confusión + Precision/Recall/
+   F1/IoU/Cohen's Kappa/MCC (`None`, no un valor inventado, donde la
+   fórmula no está definida — p. ej. Kappa/MCC con las dos capas
+   completamente positivas, 0/0 matemático real), error de área señalado y
+   absoluto, `buffered_agreement` (tolerancia espacial vía
+   `scipy.ndimage.distance_transform_edt` — ya dependencia transitiva de
+   `scikit-image`, no hace falta agregarla a mano), y desglose por bin de
+   HAND (reusa el HAND crudo que expone `FusionResult.hand`, no lo
+   recalcula). Sin barrido ROC/AUC: el producto es binario por ciclo, no
+   hay nada continuo que threshold-sweepear dentro de un mismo ciclo — el
+   barrido con sentido es a través de varios ciclos por lead time
+   (`find_cycles` ya da la lista), dejado para cuando el reporte lo
+   necesite.
+9. **Reporte** (`report.py`) — mapa HTML (`leafmap`, mismo patrón CartoDB
+   Voyager + satelital que `flood_monitor.save_outputs`, verificado el API
+   real de `add_legend`/`add_geojson`/`add_gdf` antes de escribir código),
+   CSV de una fila (`csv.DictWriter`, sin el desglose por HAND — no
+   entra en una fila plana), y Markdown narrativo con metodología,
+   métricas completas y una sección explícita de limitaciones conocidas.
+
+### CLI: diferencias con `flood_monitor.py`
+
+- `--start-date-utc` + `--end-date-utc`/`--days`: ventana con dos
+  extremos, no un solo corte.
+- `--susceptibility <ruta>`: override del ciclo auto-resuelto.
+- `--awei-variant {nsh,sh,both}`: default `None` = usa el de
+  `regions.yaml` para la región resuelta.
+- No hay `--change`: la ventana ya hace unión multi-fecha por diseño, y un
+  flag con ese nombre acá significaría otra cosa (comparar dos ventanas de
+  validación entre sí, no dos escenas de una) — no se reusó el nombre a
+  propósito, para no chocar semánticamente con el de `flood_monitor.py`.
+- `--threshold`/`--min-area-px`/`--max-slope`: mismo nombre y semántica
+  que `flood_monitor.py`, aplicados por escena dentro de `sar_layer.py`.
+
+### Tests
+
+Sufijo `test_flood_validation_*.py`, mismo split offline/`raster` de
+arriba. Puntos no obvios:
+
+- `test_flood_validation_terrain.py` — el test analítico es un valle en V
+  sintético con `HAND_PAD_PX` de margen de cada lado, en las **dos**
+  dimensiones (no solo filas): sin el margen en columnas también, el
+  recorte final queda con índices fuera de rango.
+- `test_flood_validation_main_raster.py` — `sar_layer.py`,
+  `optical_layer.py`, `terrain.py` y `seasonality.py` importan cada uno su
+  propia referencia a `stac_catalog`; los cinco (+`flood_monitor`) se
+  mockean siempre juntos en este archivo. Pasó **dos veces** que un módulo
+  nuevo se quedó sin mockear y la suite completa terminó pegándole a la
+  Planetary Computer real (una vez, ~6 min en vez de segundos) — el
+  docstring del archivo lo deja anotado para que no pase una tercera.
+- `test_flood_validation_fusion.py` — `terrain`/`seasonality` se mockean
+  directo (ya tienen sus propios tests contra STAC); `fusion.fuse` llama a
+  `terrain.compute_hand` (no al conveniente `hand_implausible_mask`) para
+  quedarse con el HAND crudo, así que los tests mockean ese, no el
+  wrapper.
+- `test_flood_validation_report.py` — los tests de `build_html_map` usan
+  `pytest.importorskip("leafmap")`: el job `raster` de CI no lo instala a
+  propósito (arrastra medio ecosistema de folium, y el mapa ya degrada
+  suave sin él), así que esos dos tests se saltean ahí. CSV/Markdown no
+  dependen de leafmap y corren siempre.
+- La reconciliación de CI se verificó a mano, no se asumió: se armaron
+  venvs que replican el install list exacto de cada job (no el venv de
+  desarrollo, que tiene `requirements.txt` completo) y se corrió la
+  selección de tests real en cada uno. Los conteos coinciden exactamente
+  con lo que da el venv de desarrollo filtrando por marcador (133
+  `offline`, 98 `raster`). Así se encontró el gap real de `pyyaml` en el
+  job `raster` (ver la sección CI arriba) — invisible en local porque ese
+  venv ya tenía todo `requirements.txt` instalado.
+
+### Limitaciones conocidas
+
+- **Fusión por sensor, no por píxel despejado**: un píxel nublado en
+  Sentinel-2 vota "seco" en vez de "sin opinión" en `fusion.py`, porque la
+  renormalización de peso es a nivel de sensor (¿tuvo esta ventana algún
+  dato?), no a nivel de píxel (¿esta escena concreta estaba despejada
+  acá?). En una semana de tormenta con nubosidad generalizada esto topea
+  la confianza en "media" justo donde más importaría "alta" — confirmado
+  en corridas reales sobre Tongoy y Punitaqui. Arreglarlo necesita que
+  `sar_layer`/`optical_layer` devuelvan una máscara de validez por píxel,
+  no solo `flood`, para que `fusion.py` excluya del denominador los
+  píxeles sin opinión real de un sensor — un refinamiento real, no un bug,
+  pendiente de confirmar si hace falta en la práctica.
+- **Sin Dynamic World**: el toggle/config/aviso-de-pendiente ya existen
+  (`region_cfg.datasets.dynamic_world`, `fusion_weights.dynamic_world`),
+  pero el módulo (`dynamic_world.py`, import-guarded) no está escrito —
+  necesita credenciales GEE no anónimas (factible bajo el tier gratuito
+  según la investigación de la Fase 0 del plan, pero no configuradas en
+  este entorno).
+- **Sin ground truth de Copernicus EMS confirmado**: la búsqueda
+  automática no encontró una activación para este evento, pero el portal
+  es una SPA que resiste rastreo automatizado — inconcluso, no un "no"
+  confirmado. Se procede asumiendo que no hay: "anegamiento real" es en sí
+  una estimación multi-sensor, no una verdad de terreno independiente.
+- **Sin agregación multi-corrida**: `write_csv_summary` escribe una fila
+  por corrida, pensada para juntarse con las de otras corridas más
+  adelante — ese batch en sí no existe todavía (fuera de scope de v1).

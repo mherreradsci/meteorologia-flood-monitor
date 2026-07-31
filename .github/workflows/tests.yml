@@ -70,17 +70,24 @@ jobs:
       # traen GDAL embebido en sus ruedas manylinux, así que sigue sin hacer
       # falta `apt install gdal-bin libgdal-dev`, que es lo que tarda minutos.
       # leafmap queda fuera a propósito: el mapa HTML ya degrada suave si no
-      # está, y arrastra medio ecosistema de folium. pysheds es para
-      # terrain.py (HAND) de flood_validation; numpy<2.4 porque pysheds 0.5
-      # llama a np.in1d, removido en numpy 2.4 (ver comentario en
-      # requirements.txt).
+      # está, y arrastra medio ecosistema de folium (los tests de report.py
+      # que sí lo necesitan usan importorskip). pysheds es para terrain.py
+      # (HAND) de flood_validation; numpy<2.4 porque pysheds 0.5 llama a
+      # np.in1d, removido en numpy 2.4 (ver comentario en requirements.txt).
+      # pyyaml: main() de flood_validation carga regions.yaml/validation.yaml
+      # siempre, incluso en las corridas reales (no solo --dry-run) que
+      # ejercitan los tests raster de main() — sin esto, cualquier test que
+      # llame a main() sin --dry-run revienta con ModuleNotFoundError antes
+      # de tocar ningún sensor (confirmado corriendo la suite en un venv que
+      # replica este job exacto, no solo el venv de desarrollo con todo
+      # requirements.txt instalado).
       - name: Instalar dependencias de ráster
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt "numpy>=1.26,<2.4" "shapely>=2.0" \
                       "scikit-image>=0.24" "rioxarray>=0.15" \
                       "geopandas>=1.0" "matplotlib>=3.9" "requests>=2.32" \
-                      "pysheds>=0.4"
+                      "pysheds>=0.4" "pyyaml>=6.0"
 
       # Escriben GeoTIFF sintéticos a disco y ejercitan el código real
       # (clip_box, reproject_match, gradiente, dilatación, vectorización y la
