@@ -1,6 +1,18 @@
-"""main() sin --dry-run: el camino real de la Fase 2, con GeoTIFF sintéticos
-en vez de red. Marcado `raster` — separado de test_flood_validation_main.py
-(que se queda solo con --dry-run) para no meter rioxarray en el job offline.
+"""main() sin --dry-run: el camino real de las Fases 2-3, con GeoTIFF
+sintéticos en vez de red. Marcado `raster` — separado de
+test_flood_validation_main.py (que se queda solo con --dry-run) para no
+meter rioxarray en el job offline.
+
+`sar_layer.py` y `optical_layer.py` importaron su propia referencia a
+`stac_catalog` (`from flood_monitor import stac_catalog` /
+`from flood_monitor import ..., stac_catalog`), así que parchear solo
+`flood_monitor.stac_catalog` no alcanza para ninguno de los dos — la misma
+lección que ya deja conftest.py sobre `list_s1_items`. Sentinel-2 está
+prendido por default en `regions.yaml`, así que CUALQUIER test que corra
+`main()` sin `--dry-run` sin parchear `optical_layer.stac_catalog` termina
+pegándole a la Planetary Computer real (ocurrió una vez: una corrida de
+~6 minutos donde debía tardar segundos). Los tres módulos se parchean
+siempre juntos acá, aunque un test individual no vaya a ejercitar los tres.
 """
 
 from __future__ import annotations
@@ -13,7 +25,7 @@ pytest.importorskip("rioxarray")
 pytest.importorskip("geopandas")
 
 import flood_monitor  # noqa: E402
-from flood_validation import sar_layer  # noqa: E402
+from flood_validation import optical_layer, sar_layer  # noqa: E402
 from flood_validation.main import main  # noqa: E402
 from helpers import utc  # noqa: E402
 from raster_helpers import ItemConRaster, bbox_lonlat, geotiff  # noqa: E402
@@ -35,18 +47,27 @@ def escena_vh(con_agua=True):
 
 
 class CatalogoFalso:
-    def __init__(self, escenas):
-        self.escenas = escenas
+    def __init__(self, escenas_s1=(), escenas_s2=()):
+        self.escenas_s1 = list(escenas_s1)
+        self.escenas_s2 = list(escenas_s2)
         self.consultas = []
 
     def search(self, **kwargs):
         coleccion = kwargs["collections"][0]
         self.consultas.append(coleccion)
         if coleccion == "sentinel-1-rtc":
-            items = self.escenas
+            items = self.escenas_s1
+        elif coleccion == "sentinel-2-l2a":
+            items = self.escenas_s2
         else:
             items = []  # sin JRC/DEM: las máscaras degradan solas (ya probado en flood_monitor)
         return type("S", (), {"item_collection": lambda _self: list(items)})()
+
+
+def _instalar(monkeypatch, catalogo):
+    monkeypatch.setattr(flood_monitor, "stac_catalog", lambda: catalogo)
+    monkeypatch.setattr(sar_layer, "stac_catalog", lambda: catalogo)
+    monkeypatch.setattr(optical_layer, "stac_catalog", lambda: catalogo)
 
 
 @pytest.fixture
@@ -55,9 +76,8 @@ def catalogo_con_una_escena(monkeypatch, tmp_path):
     item.datetime = utc(2026, 7, 16, 10, 2, 47)
     item.id = "S1D_escena"
     item.properties = {"sat:relative_orbit": 156, "sat:orbit_state": "descending"}
-    catalogo = CatalogoFalso([item])
-    monkeypatch.setattr(flood_monitor, "stac_catalog", lambda: catalogo)
-    monkeypatch.setattr(sar_layer, "stac_catalog", lambda: catalogo)
+    catalogo = CatalogoFalso(escenas_s1=[item])
+    _instalar(monkeypatch, catalogo)
     return catalogo
 
 
@@ -93,9 +113,8 @@ def test_corrida_real_escribe_geotiff_geojson_y_manifiesto(
 
 def test_sin_escenas_en_la_ventana_igual_escribe_manifiesto(
         monkeypatch, tmp_path):
-    catalogo = CatalogoFalso([])
-    monkeypatch.setattr(flood_monitor, "stac_catalog", lambda: catalogo)
-    monkeypatch.setattr(sar_layer, "stac_catalog", lambda: catalogo)
+    catalogo = CatalogoFalso()
+    _instalar(monkeypatch, catalogo)
 
     out_dir = _correr(tmp_path)
 
@@ -136,6 +155,7 @@ regions:
     display_name: "Coquimbo"
     datasets:
       sentinel1: false
+      sentinel2: false
 """)
     (config_dir / "validation.yaml").write_text("")
 
@@ -149,3 +169,89 @@ regions:
     data = json.loads(next(out_dir.glob("run_manifest-*.json")).read_text())
     assert data["sensors"] == {}
     assert data["outputs"] == {}
+
+
+# --------------------------------------------------------------------------- #
+# Fase 3: Sentinel-2, a través de main()
+# --------------------------------------------------------------------------- #
+AGUA_S2 = {"B03": 1000.0, "B11": 200.0, "B08": 200.0, "B12": 100.0, "B02": 800.0}
+SECO_S2 = {"B03": 1500.0, "B11": 2500.0, "B08": 3000.0, "B12": 2000.0, "B02": 1200.0}
+
+
+def _escena_s2(nombre, dt, tmp_path, parche_agua=None):
+    import numpy as np
+
+    bandas = {b: np.full((LADO, LADO), SECO_S2[b], dtype="float32")
+             for b in AGUA_S2}
+    if parche_agua is not None:
+        for b in AGUA_S2:
+            bandas[b][parche_agua] = AGUA_S2[b]
+    scl = np.full((LADO, LADO), 6.0, dtype="float32")  # SCL "water", despejado
+    assets = {b: geotiff(tmp_path, f"{nombre}_{b}.tif", arr)
+             for b, arr in bandas.items()}
+    assets["SCL"] = geotiff(tmp_path, f"{nombre}_SCL.tif", scl)
+    it = ItemConRaster(**assets)
+    it.datetime = dt
+    it.id = nombre
+    it.properties = {"eo:cloud_cover": 5.0}
+    return it
+
+
+def test_sentinel2_escribe_geotiff_geojson_y_manifiesto(monkeypatch, tmp_path):
+    s2 = _escena_s2("S2_a", utc(2026, 7, 17), tmp_path,
+                    parche_agua=(slice(5, 15), slice(5, 15)))
+    catalogo = CatalogoFalso(escenas_s2=[s2])
+    _instalar(monkeypatch, catalogo)
+
+    out_dir = _correr(tmp_path)
+
+    tifs = list(out_dir.glob("real_flood_s2_*.tif"))
+    assert len(tifs) == 1
+    data = json.loads(next(out_dir.glob("run_manifest-*.json")).read_text())
+    assert data["outputs"]["sentinel2"]["tif"] == str(tifs[0])
+    assert len(data["sensors"]["sentinel2"]["acquisitions"]) == 1
+    assert data["sensors"]["sentinel2"]["acquisitions"][0]["item_id"] == "S2_a"
+    # Sin escenas S1 en este catálogo: la corrida no debería fallar por eso.
+    assert data["sensors"]["sentinel1"]["acquisitions"] == []
+
+
+def test_awei_variant_llega_a_optical_layer(monkeypatch, tmp_path):
+    """Cableado de --awei-variant: mismo espíritu que
+    test_min_area_px_y_threshold_llegan_a_sar_layer."""
+    s2 = _escena_s2("S2_a", utc(2026, 7, 17), tmp_path)
+    catalogo = CatalogoFalso(escenas_s2=[s2])
+    _instalar(monkeypatch, catalogo)
+
+    registro = {}
+    original = optical_layer.build_optical_water_layer
+
+    def espia(*args, **kwargs):
+        registro["kwargs"] = kwargs
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(optical_layer, "build_optical_water_layer", espia)
+
+    _correr(tmp_path, "--awei-variant", "nsh")
+
+    assert registro["kwargs"]["awei_variant"] == "nsh"
+
+
+def test_sin_awei_variant_usa_el_de_la_region(monkeypatch, tmp_path):
+    """Sin --awei-variant, usa el default de regions.yaml (config/
+    regions.yaml trae 'sh' para Coquimbo)."""
+    s2 = _escena_s2("S2_a", utc(2026, 7, 17), tmp_path)
+    catalogo = CatalogoFalso(escenas_s2=[s2])
+    _instalar(monkeypatch, catalogo)
+
+    registro = {}
+    original = optical_layer.build_optical_water_layer
+
+    def espia(*args, **kwargs):
+        registro["kwargs"] = kwargs
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(optical_layer, "build_optical_water_layer", espia)
+
+    _correr(tmp_path)
+
+    assert registro["kwargs"]["awei_variant"] == "sh"

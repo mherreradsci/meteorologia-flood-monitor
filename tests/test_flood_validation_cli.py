@@ -46,6 +46,8 @@ def test_los_defaults_son_los_documentados():
     assert a.threshold is None
     assert a.min_area_px == 20
     assert a.max_slope == 5.0
+    # None = usa el default de la región en regions.yaml, no un valor propio.
+    assert a.awei_variant is None
 
 
 def test_fechas_llegan_como_texto_sin_parsear():

@@ -61,7 +61,7 @@ def main(argv: list[str] | None = None) -> None:
     regions_path = args.config_dir / "regions.yaml"
     validation_path = args.config_dir / "validation.yaml"
     regions_cfg = config.load_regions_config(regions_path)
-    config.load_validation_config(validation_path)  # valida que parsee bien
+    validation_cfg = config.load_validation_config(validation_path)
     region_cfg = config.resolve_region_config(args.region, regions_cfg)
     print(f"[+] Config de región resuelta: zoom={region_cfg.zoom}, "
           f"HAND≤{region_cfg.hand_threshold_m} m, AWEI "
@@ -126,13 +126,16 @@ def main(argv: list[str] | None = None) -> None:
     }
 
     if not args.dry_run:
-        # Fase 2: Sentinel-1 es el único sensor implementado. Sentinel-2 y
-        # Dynamic World, aunque estén prendidos en config, todavía no
-        # tienen módulo — se reportan como pendientes, no como error: es
-        # la misma degradación gradual que FR3 pide para un sensor sin
-        # datos, aplicada acá a un sensor sin *código* todavía.
-        outputs: dict = {}
+        # Fase 3: Sentinel-1 y Sentinel-2 están implementados. Dynamic
+        # World, aunque esté prendido en config, todavía no tiene módulo —
+        # se reporta como pendiente, no como error: la misma degradación
+        # gradual que FR3 pide para un sensor sin datos, aplicada acá a un
+        # sensor sin *código* todavía.
+        from . import outputs as outputs_io
+
+        result_outputs: dict = {}
         sensors: dict = {}
+
         if region_cfg.datasets.sentinel1:
             from . import sar_layer
 
@@ -140,9 +143,10 @@ def main(argv: list[str] | None = None) -> None:
                 geom, bbox, start, end, threshold=args.threshold,
                 min_area_px=args.min_area_px, max_slope=args.max_slope)
             if result is not None:
-                paths = sar_layer.write_geotiff_geojson(
-                    result.template, result.flood, args.output_dir, tag)
-                outputs["sentinel1"] = {
+                paths = outputs_io.write_geotiff_geojson(
+                    result.template, result.flood, args.output_dir, tag,
+                    prefix="real_flood_s1")
+                result_outputs["sentinel1"] = {
                     "tif": str(paths["tif"]),
                     "geojson": (str(paths["geojson"])
                                if paths["geojson"] else None),
@@ -156,14 +160,39 @@ def main(argv: list[str] | None = None) -> None:
         else:
             print("[i] Sentinel-1 desactivado para esta región (config).")
 
-        for sensor, enabled in asdict(region_cfg.datasets).items():
-            if sensor == "sentinel1" or not enabled:
-                continue
-            print(f"[i] {sensor}: habilitado en config pero todavía sin "
-                  f"módulo (llega en una fase siguiente) — se ignora esta "
-                  f"corrida.")
+        if region_cfg.datasets.sentinel2:
+            from . import optical_layer
 
-        manifest["outputs"] = outputs
+            awei_variant = args.awei_variant or region_cfg.awei_variant
+            collection = validation_cfg.stac_collections.get(
+                "sentinel2", "sentinel-2-l2a")
+            result = optical_layer.build_optical_water_layer(
+                geom, bbox, start, end, awei_variant=awei_variant,
+                collection=collection)
+            if result is not None:
+                paths = outputs_io.write_geotiff_geojson(
+                    result.template, result.flood, args.output_dir, tag,
+                    prefix="real_flood_s2")
+                result_outputs["sentinel2"] = {
+                    "tif": str(paths["tif"]),
+                    "geojson": (str(paths["geojson"])
+                               if paths["geojson"] else None),
+                }
+                sensors["sentinel2"] = {
+                    "acquisitions": [asdict(a) for a in result.acquisitions],
+                    "skipped": result.skipped,
+                }
+            else:
+                sensors["sentinel2"] = {"acquisitions": [], "skipped": []}
+        else:
+            print("[i] Sentinel-2 desactivado para esta región (config).")
+
+        if region_cfg.datasets.dynamic_world:
+            print("[i] dynamic_world: habilitado en config pero todavía "
+                  "sin módulo (llega en una fase siguiente) — se ignora "
+                  "esta corrida.")
+
+        manifest["outputs"] = result_outputs
         manifest["sensors"] = sensors
 
     args.output_dir.mkdir(parents=True, exist_ok=True)

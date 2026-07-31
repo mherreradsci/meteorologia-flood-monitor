@@ -202,43 +202,5 @@ def test_agua_permanente_se_calcula_una_sola_vez_no_por_escena(
     assert catalogo.consultas.count("cop-dem-glo-30") == 1
     assert catalogo.consultas.count("sentinel-1-rtc") == 1  # una sola búsqueda de ventana
 
-
-# --------------------------------------------------------------------------- #
-# Escritura de salidas
-# --------------------------------------------------------------------------- #
-def test_write_geotiff_geojson_escribe_los_dos_archivos(
-        instalar_catalogo, tmp_path):
-    import rioxarray
-
-    a = _item("S1_a", utc(2026, 7, 16, 10, 2), (slice(5, 15), slice(5, 15)),
-             tmp_path)
-    instalar_catalogo([a])
-    xmin, ymin, xmax, ymax = bbox_lonlat(LADO, LADO)
-    result = sar_layer.build_real_flood_layer(
-        {}, (xmin, ymin, xmax, ymax), START, END)
-
-    out_dir = tmp_path / "salida"
-    paths = sar_layer.write_geotiff_geojson(result.template, result.flood,
-                                            out_dir, "tag_de_prueba")
-
-    assert paths["tif"].exists()
-    assert paths["geojson"].exists()
-    assert paths["tif"].name == "real_flood_s1_tag_de_prueba.tif"
-    escrito = rioxarray.open_rasterio(paths["tif"]).values.squeeze()
-    assert int(escrito.sum()) == int(result.flood.sum())
-
-
-def test_write_geotiff_geojson_sin_agua_no_escribe_geojson(
-        instalar_catalogo, tmp_path):
-    a = _item("S1_seca", utc(2026, 7, 16, 10, 2), None, tmp_path)
-    instalar_catalogo([a])
-    xmin, ymin, xmax, ymax = bbox_lonlat(LADO, LADO)
-    result = sar_layer.build_real_flood_layer(
-        {}, (xmin, ymin, xmax, ymax), START, END)
-
-    out_dir = tmp_path / "salida"
-    paths = sar_layer.write_geotiff_geojson(result.template, result.flood,
-                                            out_dir, "tag_seco")
-
-    assert paths["tif"].exists()
-    assert paths["geojson"] is None
+# La escritura de GeoTIFF/GeoJSON vive en outputs.py (compartida con
+# optical_layer.py) — ver test_flood_validation_outputs.py.

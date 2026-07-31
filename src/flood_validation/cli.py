@@ -89,6 +89,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Pendiente máxima en grados (Copernicus DEM): "
                         "píxeles más empinados se descartan como falsos "
                         "positivos. 0 desactiva. Default: 5")
+    p.add_argument("--awei-variant", choices=["nsh", "sh", "both"],
+                   default=None,
+                   help="Variante de AWEI para la capa Sentinel-2: 'sh' "
+                        "trae término de sombra (relevante en el terreno "
+                        "montañoso de Coquimbo), 'nsh' no, 'both' cuenta "
+                        "cualquiera de las dos como evidencia. Si se "
+                        "omite, usa el default de la región en "
+                        "regions.yaml.")
     p.add_argument("--dry-run", action="store_true",
                    help="Resuelve AOI/ventana/config y escribe el "
                         "manifiesto de la corrida, sin procesar rásters. "
