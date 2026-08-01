@@ -163,7 +163,7 @@ def _metadata_panel_html(ctx: ReportContext) -> str:
                 box-shadow: 0 1px 4px rgba(0,0,0,0.4); font-size: 12px;
                 max-width: 300px;">
       <b>{lugar}</b><br>
-      Ventana: {ctx.start:%Y-%m-%d} a {ctx.end:%Y-%m-%d} UTC<br>
+      Ventana: {ctx.start.isoformat()} a {ctx.end.isoformat()}<br>
       Sensores: {', '.join(sensores) or 'ninguno'}<br>
       Susceptibilidad: {ciclo_txt}<br>
       <i>Producto de susceptibilidad = propensión, no predicción de este
@@ -232,7 +232,7 @@ def write_markdown_report(ctx: ReportContext, output_dir: Path,
     partes = [
         f"# Validación de anegamiento — {lugar}",
         "",
-        f"**Ventana:** {ctx.start:%Y-%m-%d %H:%M} a {ctx.end:%Y-%m-%d %H:%M} UTC  ",
+        f"**Ventana:** {ctx.start.isoformat()} a {ctx.end.isoformat()}  ",
         f"**ID de corrida:** `{ctx.tag}`",
         "",
         "## Metodología (resumen)",
