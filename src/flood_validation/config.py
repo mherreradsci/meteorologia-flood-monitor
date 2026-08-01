@@ -38,6 +38,15 @@ class DatasetToggles:
 @dataclass
 class RegionConfig:
     display_name: str
+    # Identidad alineada con el repo hermano meteorologia-flood-projections
+    # (config*.yaml → region.nombre / region.id). La clave de la entrada en
+    # regions.yaml es su region.osm_geocode, así el mismo string sirve para
+    # --region acá y para geocodificar allá. `id` es además la subcarpeta
+    # de outputs/<id> del hermano, o sea el último segmento de
+    # susceptibility.source_root. Vacíos si la región no los declara
+    # (p. ej. la entrada "default", que no mapea a una región del hermano).
+    nombre: str = ""
+    id: str = ""
     map_center: tuple[float, float] | None = None  # None = centroide del AOI
     zoom: int = 12
     susceptibility: SusceptibilityConfig = field(
@@ -94,6 +103,8 @@ def _region_from_dict(entry: dict) -> RegionConfig:
     defaults = RegionConfig(display_name="")
     return RegionConfig(
         display_name=entry.get("display_name", ""),
+        nombre=entry.get("nombre", ""),
+        id=entry.get("id", ""),
         map_center=tuple(center) if center else None,
         zoom=entry.get("zoom", defaults.zoom),
         susceptibility=SusceptibilityConfig(
