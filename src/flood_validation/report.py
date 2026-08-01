@@ -23,6 +23,33 @@ from pathlib import Path
 TIER_LABELS = {1: "baja", 2: "media", 3: "alta"}
 TIER_COLORS = {1: "#ffeb3b", 2: "#ff9800", 3: "#e53935"}
 
+# Leaflet colapsa `.leaflet-control-layers` en el evento `mouseleave` del
+# propio control: con varias capas para tildar, basta que el cursor se
+# desvíe un poco del panel angosto para que se cierre antes de terminar de
+# elegir. `DOMContentLoaded` corre después del <script> que arma el mapa
+# (que folium siempre emite más abajo en el documento), así que encuentra
+# el control ya creado sin importar dónde quede este script en el HTML.
+# Los clics dentro del panel no llegan a `document` (Leaflet les aplica
+# `disableClickPropagation`), así que tildar una capa no lo cierra; el
+# `panel.contains` es solo una segunda red por si esa API cambia.
+_LAYER_CONTROL_STAY_OPEN_JS = """
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var panel = document.querySelector('.leaflet-control-layers');
+  if (!panel) return;
+  var expandedClass = 'leaflet-control-layers-expanded';
+  panel.addEventListener('mouseleave', function () {
+    panel.classList.add(expandedClass);
+  });
+  document.addEventListener('click', function (ev) {
+    if (!panel.contains(ev.target)) {
+      panel.classList.remove(expandedClass);
+    }
+  });
+});
+</script>
+"""
+
 
 @dataclass
 class ReportContext:
@@ -133,6 +160,7 @@ def build_html_map(ctx: ReportContext, output_dir: Path) -> Path | None:
 
         metadata_html = _metadata_panel_html(ctx)
         m.get_root().html.add_child(_folium_element(metadata_html))
+        m.get_root().html.add_child(_folium_element(_LAYER_CONTROL_STAY_OPEN_JS))
 
         html_path = output_dir / f"flood_map-{ctx.tag}.html"
         m.to_html(str(html_path))

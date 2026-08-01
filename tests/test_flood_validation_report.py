@@ -94,6 +94,11 @@ def test_build_html_map_escribe_un_archivo_con_las_capas(tmp_path):
     # (p. ej. --start-date-utc/--end-date-utc con offset) deben poder
     # distinguirse en el panel de metadata.
     assert "Ventana: 2026-07-15 00:00 a 2026-07-22 00:00 UTC" in contenido
+    # El panel de capas no debe colapsar solo por sacar el cursor: Leaflet
+    # lo hace en 'mouseleave', lo que cerraba el panel antes de poder
+    # tildar un checkbox. Debe quedar abierto hasta un clic en el mapa.
+    assert "leaflet-control-layers-expanded" in contenido
+    assert "mouseleave" in contenido
 
 
 def test_build_html_map_sin_susceptibilidad_no_rompe(tmp_path):
