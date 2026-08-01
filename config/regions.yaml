@@ -55,7 +55,12 @@ regions:
       sentinel2: true
       dynamic_world: false
     hand_threshold_m: 15.0
-    drainage_threshold_km2: 0.05
+    # 0.5 km² (no el 0.05 default calibrado en Tongoy): en el relieve de
+    # Vallenar, con 0.05 casi cualquier vaguada califica como cauce y las
+    # crestas quedan con HAND bajo — el filtro dejaba pasar anegamiento
+    # falso en la cima de los cerros. Verificar % de celdas válidas en el
+    # log al ajustar: subir el umbral resta cobertura al HAND.
+    drainage_threshold_km2: 0.5
     awei_variant: sh
     confidence_threshold: 0.5
 

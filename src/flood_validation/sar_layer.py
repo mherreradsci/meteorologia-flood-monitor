@@ -89,6 +89,11 @@ def build_real_flood_layer(
     skipped: list[str] = []
 
     for item in items:
+        props = item.properties
+        print(f"[+] Sentinel-1 {item.id}: "
+              f"{(item.datetime or EPOCH):%Y-%m-%d %H:%M:%S} UTC "
+              f"(órbita relativa {props.get('sat:relative_orbit')}, "
+              f"{props.get('sat:orbit_state')})")
         try:
             vh_db = read_vh_db(item, bbox)
             if template is None:
@@ -114,7 +119,6 @@ def build_real_flood_layer(
             continue
 
         union = water if union is None else (union | water)
-        props = item.properties
         acquisitions.append(Acquisition(
             item_id=item.id,
             datetime_utc=(item.datetime or EPOCH).isoformat(),
