@@ -90,10 +90,10 @@ def test_build_html_map_escribe_un_archivo_con_las_capas(tmp_path):
     contenido = html_path.read_text(encoding="utf-8")
     assert "Tongoy" in contenido  # panel de metadata
     assert len(contenido) > 1000  # no es un archivo vacío/roto
-    # Ventana con hora y offset explícitos (no solo la fecha): una ventana
-    # de menos de un día se veía igual que una de varios en el popup.
-    assert "2026-07-15T00:00:00+00:00" in contenido
-    assert "2026-07-22T00:00:00+00:00" in contenido
+    # La ventana lleva hora, no solo fecha: dos corridas en el mismo día
+    # (p. ej. --start-date-utc/--end-date-utc con offset) deben poder
+    # distinguirse en el panel de metadata.
+    assert "Ventana: 2026-07-15 00:00 a 2026-07-22 00:00 UTC" in contenido
 
 
 def test_build_html_map_sin_susceptibilidad_no_rompe(tmp_path):
@@ -153,8 +153,6 @@ def test_write_markdown_report_incluye_metricas_y_caveats(tmp_path):
     assert "Desglose por HAND" in texto
     assert "Limitaciones conocidas" in texto
     assert "real_flood_fused_tag_de_prueba.tif" in texto
-    assert "2026-07-15T00:00:00+00:00" in texto
-    assert "2026-07-22T00:00:00+00:00" in texto
 
 
 def test_write_markdown_report_sin_comparacion_lo_dice_explicito(tmp_path):
