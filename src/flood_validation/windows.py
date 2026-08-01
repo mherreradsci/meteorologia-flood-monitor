@@ -33,11 +33,28 @@ def resolve_window(args: argparse.Namespace) -> tuple[datetime, datetime]:
     `end` sale de --end-date-utc (o "ahora"); `start` de --start-date-utc si
     se dio, si no de `end - --days`. Corta la corrida si la ventana queda
     vacía o invertida en vez de dejar que un STAC range abierto al revés
-    falle más adelante con un traceback menos claro.
+    falle más adelante con un traceback menos claro. Lo mismo para una
+    fecha malformada en --start-date-utc/--end-date-utc: en vez de dejar
+    subir el `ValueError` de `datetime.fromisoformat`/`strptime` como
+    traceback de Python, se corta con un mensaje que nombra el flag y el
+    formato esperado.
     """
-    end = parse_end_date(args.end_date_utc, args.local_time)
+    try:
+        end = parse_end_date(args.end_date_utc, args.local_time)
+    except ValueError as e:
+        raise SystemExit(
+            f"[!] --end-date-utc inválido ({args.end_date_utc!r}): {e}. "
+            f"Usa formato UTC 'YYYY-MM-DD' o 'YYYY-MM-DDTHH:MM:SS[+HH:MM]' "
+            f"(ej. 2026-07-16 o 2026-07-16T00:00:00-04:00).") from e
     if args.start_date_utc is not None:
-        start = _parse_start_date(args.start_date_utc, args.local_time)
+        try:
+            start = _parse_start_date(args.start_date_utc, args.local_time)
+        except ValueError as e:
+            raise SystemExit(
+                f"[!] --start-date-utc inválido ({args.start_date_utc!r}): "
+                f"{e}. Usa formato UTC 'YYYY-MM-DD' o "
+                f"'YYYY-MM-DDTHH:MM:SS[+HH:MM]' (ej. 2026-07-16 o "
+                f"2026-07-16T00:00:00-04:00).") from e
     else:
         start = end - timedelta(days=args.days)
     if start >= end:

@@ -96,3 +96,21 @@ def test_start_date_en_invierno_usa_el_offset_de_esa_fecha(en_santiago):
     start, _ = windows.resolve_window(args)
 
     assert start == datetime(2026, 7, 15, 4, 0, 0, tzinfo=timezone.utc)
+
+
+def test_end_date_malformada_falla_con_mensaje_claro():
+    """Antes subía `ValueError` de `datetime.strptime` como traceback de
+    Python; ahora se corta con `SystemExit` nombrando el flag y el formato
+    esperado."""
+    args = _args(["--end-date-utc", "2026-13-45"])
+
+    with pytest.raises(SystemExit, match="--end-date-utc inválido"):
+        windows.resolve_window(args)
+
+
+def test_start_date_malformada_falla_con_mensaje_claro():
+    args = _args(["--start-date-utc", "16/07/2026",
+                 "--end-date-utc", "2026-07-22"])
+
+    with pytest.raises(SystemExit, match="--start-date-utc inválido"):
+        windows.resolve_window(args)
