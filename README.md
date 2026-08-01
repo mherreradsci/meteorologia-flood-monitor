@@ -184,6 +184,96 @@ Kappa/MCC, error de área, desglose por HAND), `validation_summary-*.csv`,
 `validation_report-*.md` y `flood_map-*.html` (mapa interactivo con capas
 por tier de confianza, susceptibilidad y acuerdo/desacuerdo).
 
+### Métricas: matriz de confusión
+
+Las métricas de `validation_metrics-*.json` comparan píxel a píxel la capa de
+susceptibilidad (predicción) contra el anegamiento real estimado (referencia).
+Cada píxel cae en una de cuatro celdas de la **matriz de confusión**:
+
+| | Real: inundado | Real: no inundado |
+|---|---|---|
+| **Predicho: inundado** | TP (verdadero positivo) | FP (falso positivo) |
+| **Predicho: no inundado** | FN (falso negativo) | TN (verdadero negativo) |
+
+- **TP** — píxeles inundados que la predicción marcó correctamente.
+- **FP** — falsa alarma: predicho inundado, pero seco en la referencia.
+- **FN** — omisión: inundado en la referencia, pero la predicción no lo vio.
+- **TN** — seco en ambas capas.
+
+De ahí derivan las métricas del JSON:
+
+- **Precision** = TP / (TP + FP) — de lo predicho como inundado, ¿cuánto era
+  real?
+- **Recall** = TP / (TP + FN) — de lo realmente inundado, ¿cuánto se detectó?
+- **F1** = media armónica de Precision y Recall; equilibra falsas alarmas y
+  omisiones en un solo número (1 = perfecto, 0 = sin acierto).
+- **IoU** (Intersection over Union, índice de Jaccard) = TP / (TP + FP + FN) —
+  solapamiento entre ambas capas, ignorando los TN: en un AOI mayormente seco
+  los TN dominan e inflarían cualquier métrica que los cuente.
+- **Kappa de Cohen** y **MCC** — acuerdo corregido por azar; útiles justamente
+  porque la clase "inundado" es minoritaria. Valen `None` cuando la fórmula es
+  un 0/0 real (p. ej. ambas capas completamente positivas), no un valor
+  inventado.
+
 Detalle de arquitectura, config (`config/regions.yaml`/`validation.yaml`),
 convenciones de test y limitaciones conocidas: ver la sección
 `flood_validation` de `CLAUDE.md`.
+
+## Glosario de siglas
+
+### Sensores y teledetección
+
+| Sigla | Significado |
+|---|---|
+| SAR | Synthetic Aperture Radar — radar de apertura sintética (Sentinel-1) |
+| VH | Polarización cruzada (emite Vertical, recibe Horizontal) — banda SAR usada para detectar agua |
+| RTC | Radiometric Terrain Correction — la variante de Sentinel-1 usada (`sentinel-1-rtc`) |
+| dB | Decibel — escala logarítmica del retorno (backscatter) SAR |
+| SCL | Scene Classification Layer — máscara de nube/sombra/nieve de Sentinel-2 |
+| AWEI | Automated Water Extraction Index — índice de agua sobre Sentinel-2 (variantes `nsh`/`sh`) |
+| NDWI / MNDWI | (Modified) Normalized Difference Water Index — índices de agua alternativos a AWEI |
+
+### Datasets de referencia
+
+| Sigla | Significado |
+|---|---|
+| DEM | Digital Elevation Model — modelo digital de elevación (Copernicus GLO-30) |
+| JRC | Joint Research Centre (Comisión Europea) — autor del dataset GSW |
+| GSW | (JRC) Global Surface Water — ocurrencia y estacionalidad de agua superficial |
+| HAND | Height Above Nearest Drainage — altura sobre el drenaje más cercano; filtro de plausibilidad de terreno |
+| GFM | (Copernicus) Global Flood Monitoring — producto de referencia para validación visual |
+| EMS | (Copernicus) Emergency Management Service — activaciones de emergencia usables como ground truth |
+| GEE | Google Earth Engine — requerido por Dynamic World (no implementado) |
+
+### Geoespacial
+
+| Sigla | Significado |
+|---|---|
+| AOI | Area of Interest — polígono o bbox que define la zona a procesar |
+| bbox | Bounding box — rectángulo `xmin ymin xmax ymax` en lon/lat |
+| POI | Point of Interest — punto geocodificado por `--place` |
+| EPSG | Código de sistema de referencia de coordenadas (EPSG:4326 = lat/lon WGS84) |
+| UTM | Universal Transverse Mercator — proyección en que se calcula la máscara |
+| OSM | OpenStreetMap — fuente del geocodificador Nominatim (`--place`) |
+| STAC | SpatioTemporal Asset Catalog — API de catálogo de Planetary Computer |
+| GDAL | Geospatial Data Abstraction Library — base de rasterio/rioxarray |
+
+### Métricas de validación
+
+Ver la sección "Métricas: matriz de confusión" para las definiciones completas.
+
+| Sigla | Significado |
+|---|---|
+| TP / TN | True Positive / True Negative — aciertos (inundado / seco) |
+| FP / FN | False Positive / False Negative — falsa alarma / omisión |
+| F1 | Media armónica de Precision y Recall |
+| IoU | Intersection over Union — índice de Jaccard |
+| MCC | Matthews Correlation Coefficient — correlación robusta a clases desbalanceadas |
+
+### Tiempo e infraestructura
+
+| Sigla | Significado |
+|---|---|
+| UTC | Coordinated Universal Time — zona horaria de todo el pipeline |
+| DST | Daylight Saving Time — horario de verano (afecta `--local-time`) |
+| CI | Continuous Integration — los jobs de GitHub Actions del repo |
