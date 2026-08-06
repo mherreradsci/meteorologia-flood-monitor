@@ -26,6 +26,8 @@ def test_carga_una_region_con_todos_los_campos(tmp_path):
 regions:
   "Región de Prueba":
     display_name: "Prueba"
+    nombre: "Región de Prueba"
+    id: prueba
     map_center: [-71.2, -30.1]
     zoom: 10
     susceptibility:
@@ -44,6 +46,8 @@ regions:
     r = regions["Región de Prueba"]
 
     assert r.display_name == "Prueba"
+    assert r.nombre == "Región de Prueba"
+    assert r.id == "prueba"
     assert r.map_center == (-71.2, -30.1)
     assert r.zoom == 10
     assert r.susceptibility.source_root == "../otro-repo/outputs/prueba"
@@ -66,6 +70,8 @@ regions:
     regions = config.load_regions_config(tmp_path / "regions.yaml")
     r = regions["Región Mínima"]
 
+    assert r.nombre == ""
+    assert r.id == ""
     assert r.map_center is None
     assert r.zoom == 12
     assert r.susceptibility.source_root is None
@@ -163,6 +169,24 @@ def test_regions_yaml_del_repo_carga_y_resuelve_coquimbo():
         "../meteorologia-flood-projections/outputs/coquimbo"
     assert r.susceptibility.sufijo_preferido == "gfs"
     assert "default" in regions
+
+
+def test_regions_yaml_del_repo_id_consistente_con_source_root():
+    """La identidad de cada región (clave = osm_geocode del repo hermano,
+    nombre = region.nombre, id = region.id) ancla la ruta del producto:
+    outputs/<id> debe ser el último segmento de source_root. Si divergen,
+    la susceptibilidad se buscaría en la carpeta de otra región."""
+    regions = config.load_regions_config(REPO_CONFIG_DIR / "regions.yaml")
+
+    for key, r in regions.items():
+        if key == "default":
+            continue
+        assert r.nombre, f"'{key}' sin nombre"
+        assert r.id, f"'{key}' sin id"
+        assert key.startswith(r.nombre), \
+            f"la clave '{key}' (osm_geocode) no empieza con nombre='{r.nombre}'"
+        assert r.susceptibility.source_root.rstrip("/").endswith(f"/{r.id}"), \
+            f"source_root de '{key}' no termina en /{r.id}"
 
 
 def test_validation_yaml_del_repo_carga():

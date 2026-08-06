@@ -560,3 +560,43 @@ arriba. Puntos no obvios:
 - **Sin agregación multi-corrida**: `write_csv_summary` escribe una fila
   por corrida, pensada para juntarse con las de otras corridas más
   adelante — ese batch en sí no existe todavía (fuera de scope de v1).
+
+Las cuatro siguientes salieron de la calibración en vivo sobre Vallenar
+(Región de Atacama, evento del 2026-07-19; corridas `2a1f800a`,
+`c4aee33c`, `2a69a658`, `da0a76b5` en `output/validation/`):
+
+- **La ventana debe anclarse al evento y ensancharse hacia adelante,
+  nunca hacia atrás**: la unión OR de escenas es asimétrica frente al
+  error — un falso positivo en *cualquier* escena entra al mapa completo.
+  Una escena pre-evento (2026-07-16, pre-lluvia) aportó 15.9% del AOI de
+  falsos positivos contra el 3.0% de la escena de la noche del evento;
+  moverse de la ventana 15→20 a la 19→22 bajó la capa "real" de 14.0 a
+  5.9 km² y subió Kappa/MCC de ~0.002 a ~0.05.
+- **La resolución de ciclo "el más reciente que solapa" es la heurística
+  equivocada para validar eventos**: con una ventana que se extiende
+  después del evento (lo que la regla anterior recomienda), siempre gana
+  un ciclo post-evento que proyecta desde después de la lluvia — sobre
+  Vallenar resolvió el ciclo del 22 18utc con **0 px susceptibles** y las
+  métricas colapsaron (tp=fp=0). El ciclo correcto es el último que
+  *empieza antes* del evento; hoy se fuerza con `--susceptibility <ruta>`.
+  Una futura opción `--event` derivaría ventana Y ciclo de una sola
+  fecha, eliminando las dos trampas a la vez.
+- **El tier "alta" pierde significado con un solo sensor** (extiende la
+  limitación de fusión por sensor de arriba): con S2 nublado 94% que
+  *participa*, todo S1 queda en "media"; con S2 nublado 99.7% que se
+  *saltea*, la renormalización deja a S1 con peso 1.0 y todo sale "alta"
+  (58,597 px alta / 0 media, corrida `2a69a658`). La misma situación
+  física produce etiquetas opuestas según un umbral interno de
+  participación. Regla candidata: "alta" requiere ≥2 sensores con dato
+  real (distinguible en `FusionResult` sin tocar la renormalización).
+- **Artefactos permanentes por geometría de órbita**: los cerros de
+  regolito liso al NE de Vallenar son oscuros (< -22 dB) en la órbita
+  relativa 156 descendente *siempre* — pre y post lluvia — y ningún
+  umbral global los separa de agua; la unión multi-órbita acumula los
+  artefactos de cada geometría. Mitigado con `drainage_threshold_km2:
+  0.5` por región (crestas quedan con HAND alto sobre cauces reales;
+  validez apenas bajó de 99.9% a 98.5%). El arreglo de fondo es de
+  diseño, no de calibración: exigir persistencia (≥2 escenas) para el
+  tier alto, o una referencia pre-evento por órbita (el `--change` de
+  `flood_monitor`, que este pipeline no tiene) — la misma escena
+  pre-evento que contamina la unión serviría de referencia para restar.
